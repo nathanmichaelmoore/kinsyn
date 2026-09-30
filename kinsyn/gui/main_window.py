@@ -154,8 +154,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scrub.valueChanged.connect(lambda i: self.seek(i) if self.scrub.isSliderDown() else None)
         self.scrub.sliderPressed.connect(lambda: self.set_playing(False))
         hl.addWidget(self.scrub, 1)
+        # Fixed-width font + padded fields so the readout never changes width
+        # (a changing width would shove the scrub slider around).
         self.readout = QtWidgets.QLabel()
-        self.readout.setMinimumWidth(320)
+        self.readout.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
+        self.readout.setTextFormat(QtCore.Qt.PlainText)
+        self.readout.setFixedWidth(self.readout.fontMetrics().horizontalAdvance(
+            self._readout_text(-99999.999, -99999.999, 179.9, 99999.99, "length", "length", "mm") + "  "))
         hl.addWidget(self.readout)
         return hl
 
@@ -336,12 +341,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scrub.setValue(i)
         self.scrub.blockSignals(False)
         f = self.circuit.frames
-        mu = f.mu[i]
-        mu_txt = f"   μ {format_angle(mu, 1)}°" if np.isfinite(mu) else ""
-        ma = self._ma[i]
-        ma_txt = f"   MA {ma:.2f}" if np.isfinite(ma) and ma < 1e3 else "   MA ∞ (toggle)"
-        self.readout.setText(f"input {self._fmt_in(f.q[i])}   output {self._fmt_out(f.output[i])}"
-                             f"{mu_txt}{ma_txt}")
+        self.readout.setText(self._readout_text(f.q[i], f.output[i], f.mu[i], self._ma[i],
+                                                self.mech.input_kind, self.mech.output_kind, self.unit))
+
+    @staticmethod
+    def _readout_text(q, out, mu, ma, in_kind, out_kind, unit):
+        def val(v, kind):
+            if kind == "angle":
+                return f"{math.degrees(v) % 360:9.1f}°   "
+            return f"{v / LENGTH_UNITS[unit]:10.3f} {unit:<2}"
+
+        mu_txt = f"{math.degrees(mu):5.1f}°" if np.isfinite(mu) else "  n/a "
+        ma_txt = f"{ma:8.2f}" if np.isfinite(ma) and ma < 1e4 else "       ∞"
+        return f"input {val(q, in_kind)}  output {val(out, out_kind)}  μ {mu_txt}  MA {ma_txt}"
 
     # --- units / library -------------------------------------------------
     def set_units(self, unit):
