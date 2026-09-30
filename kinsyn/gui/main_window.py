@@ -39,6 +39,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.circuit_index = 0
         self.circuit = None
         self.index = 0.0
+        self.source = None  # library entry the current design started from
+        self.baseline = (self.mech, None)  # what Reset restores
         self.mu_limit = math.radians(self.prefs["analysis/mu_limit_deg"])
 
         self.view = MechanismView()
@@ -57,6 +59,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor = ParamEditor()
         self.editor.changed.connect(self.on_edit)
         self.editor.typeChanged.connect(self.on_type)
+        head = QtWidgets.QHBoxLayout()
+        self.source_label = QtWidgets.QLabel()
+        self.source_label.setTextFormat(QtCore.Qt.RichText)
+        head.addWidget(self.source_label, 1)
+        self.reset_btn = QtWidgets.QPushButton("Reset")
+        self.reset_btn.setToolTip("Restore the template's original dimensions and operating range (Ctrl+R)")
+        self.reset_btn.clicked.connect(self.reset_mechanism)
+        head.addWidget(self.reset_btn)
+        rl.addLayout(head)
         rl.addWidget(self.editor)
         rl.addWidget(self._build_motion_box())
         self.summary = QtWidgets.QLabel()
@@ -125,6 +136,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction(act)
         m.addAction(QtGui.QAction("Quit", self, shortcut="Ctrl+Q", triggered=self.close))
         e = self.menuBar().addMenu("&Edit")
+        e.addAction(QtGui.QAction("Reset mechanism", self, shortcut="Ctrl+R", triggered=self.reset_mechanism))
         e.addAction(QtGui.QAction("Preferences…", self, shortcut="Ctrl+,", triggered=self.show_preferences))
         v = self.menuBar().addMenu("&View")
         v.addAction(QtGui.QAction("Larger text", self, shortcuts=["Ctrl+=", "Ctrl++"],
@@ -187,6 +199,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # --- model updates ---------------------------------------------------
     def load_entry(self, entry):
+        self.source = entry
+        self.baseline = (entry.mechanism, entry.operating_range)
         self.mech = entry.mechanism
         self.operating = entry.operating_range
         self.circuit_index = 0
@@ -198,6 +212,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if kind != self.mech.kind:
             self.mech = REGISTRY[kind]()
             self.operating = None
+            self.source = None
+            self.baseline = (self.mech, None)
             self.circuit_index = 0
             self.editor.set_mechanism(self.mech)
             self.recompute(autorange=True)
@@ -229,7 +245,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.operating = (self.op_lo.value, self.op_hi.value)
         self.recompute()
 
+    def reset_mechanism(self):
+        """Restore the template (or type defaults) the design started from."""
+        self.mech, self.operating = self.baseline
+        self.circuit_index = 0
+        self.editor.set_mechanism(self.mech)  # rebuild: resets slider ranges too
+        self.recompute(autorange=True)
+        self.statusBar().showMessage("Reset to " + (self.source.name if self.source else "defaults"), 2000)
+
+    def _update_source_label(self):
+        modified = (self.mech, self.operating) != self.baseline
+        name = html.escape(self.source.name) if self.source else f"New {html.escape(self.mech.title)}"
+        tag = " <span style='color:#f0a04b'>(modified)</span>" if modified else ""
+        self.source_label.setText(f"<b>{name}</b>{tag}")
+        self.reset_btn.setEnabled(modified)
+
     def recompute(self, autorange=False):
+        self._update_source_label()
         intervals, full, circuit, summary = analyze(self.mech, self.circuit_index, N_SAMPLES,
                                                     self.operating, self.mu_limit)
         self.circuit = circuit
