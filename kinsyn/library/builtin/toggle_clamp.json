@@ -1,0 +1,38 @@
+{
+  "id": "toggle_clamp",
+  "name": "Toggle clamp (four-bar, over-center)",
+  "group": "Over-center / toggle",
+  "tags": [
+    "over-center",
+    "toggle",
+    "clamp",
+    "latch",
+    "four-bar",
+    "mechanical-advantage"
+  ],
+  "description": "The handle (input link) swings from open until it lines up with the connecting link (coupler). That is the toggle, where the clamp arm (output) reaches its extreme and the mechanical advantage becomes infinite. The handle then goes a few degrees past the toggle onto a stop, so clamping force pushes it against the stop instead of opening it: an over-center lock. Adjust the operating range end to set the over-center amount (typically 2-5 deg).",
+  "expected_class": "Crank-rocker",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      80,
+      0
+    ],
+    "a": 30,
+    "b": 60,
+    "c": 55,
+    "P": [
+      30.0,
+      0.0
+    ],
+    "branch": 1
+  },
+  "operating_range": [
+    -0.6981317007977318,
+    0.7330382858376184
+  ]
+}

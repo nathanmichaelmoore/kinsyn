@@ -1,0 +1,29 @@
+{
+  "id": "slider_driven_crank",
+  "name": "Slider-driven crank (linear input)",
+  "group": "Slider families",
+  "tags": [
+    "slider",
+    "linear-actuator",
+    "rocker"
+  ],
+  "description": "A linear input, such as an actuator, a hand pump or a press ram, drives the crank through the coupler. The crank rocks between the dead points where the crank and coupler line up.",
+  "expected_class": "Slider-driven crank (linear input)",
+  "mechanism": {
+    "type": "slider_crank",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 40,
+    "b": 90,
+    "gamma": 0.0,
+    "e": 0.0,
+    "P": [
+      45.0,
+      0.0
+    ],
+    "branch": 1,
+    "driver": "slider"
+  }
+}

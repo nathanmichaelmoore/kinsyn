@@ -1,0 +1,32 @@
+{
+  "id": "crank_shaper",
+  "name": "Crank-shaper quick-return",
+  "group": "Slider families",
+  "tags": [
+    "inverted-slider",
+    "quick-return",
+    "slotted-link",
+    "shaper"
+  ],
+  "description": "The crank is shorter than the ground link, so the slotted link rocks. The cutting stroke uses more crank rotation than the return stroke, which gives a quick return.",
+  "expected_class": "Crank-shaper quick-return (slotted link rocks)",
+  "mechanism": {
+    "type": "inverted_slider",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 30,
+    "B0": [
+      -0.0,
+      -80.0
+    ],
+    "e": 0.0,
+    "P": [
+      -40.0,
+      0.0
+    ],
+    "branch": 1,
+    "driver": "crank"
+  }
+}

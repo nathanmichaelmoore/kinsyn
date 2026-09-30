@@ -1,0 +1,26 @@
+{
+  "id": "scotch_yoke",
+  "name": "Scotch yoke",
+  "group": "Slider families",
+  "tags": [
+    "scotch-yoke",
+    "slider",
+    "harmonic",
+    "reciprocating"
+  ],
+  "description": "The crank pin slides in a slotted yoke, giving exact simple-harmonic motion, x = a cos(theta). It is used in valve actuators, test shakers and some compact engines.",
+  "expected_class": "Scotch yoke",
+  "mechanism": {
+    "type": "scotch_yoke",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 40,
+    "gamma": 0.0,
+    "P": [
+      100.0,
+      0.0
+    ]
+  }
+}

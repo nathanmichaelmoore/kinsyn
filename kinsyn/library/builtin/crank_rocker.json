@@ -1,0 +1,32 @@
+{
+  "id": "crank_rocker",
+  "name": "Crank-rocker",
+  "group": "Grashof classes",
+  "tags": [
+    "crank-rocker",
+    "grashof",
+    "four-bar",
+    "oscillation"
+  ],
+  "description": "The shortest link is the input crank, so it rotates fully while the output rocks back and forth. This is the workhorse for turning motor rotation into oscillation, as in windshield wipers, pumpjacks and agitators.",
+  "expected_class": "Crank-rocker",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      100,
+      0
+    ],
+    "a": 30,
+    "b": 110,
+    "c": 70,
+    "P": [
+      55.0,
+      35.0
+    ],
+    "branch": 1
+  }
+}

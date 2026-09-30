@@ -1,0 +1,33 @@
+{
+  "id": "parallelogram",
+  "name": "Parallelogram",
+  "group": "Grashof classes",
+  "tags": [
+    "parallelogram",
+    "change-point",
+    "parallel-motion",
+    "translation",
+    "four-bar"
+  ],
+  "description": "Opposite links are equal, so the coupler translates without rotating. Every coupler point traces a circle. It is used for parallel-motion lifts, drafting machines and locomotive side rods. At the change points (all pivots in line) it can flip into an antiparallelogram.",
+  "expected_class": "Change point (Grashof boundary)",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      100,
+      0
+    ],
+    "a": 40,
+    "b": 100,
+    "c": 40,
+    "P": [
+      50.0,
+      30.0
+    ],
+    "branch": 1
+  }
+}

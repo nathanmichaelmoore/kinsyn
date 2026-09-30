@@ -1,0 +1,30 @@
+{
+  "id": "slider_crank_offset",
+  "name": "Slider-crank, offset (quick return)",
+  "group": "Slider families",
+  "tags": [
+    "slider-crank",
+    "slider",
+    "offset",
+    "quick-return"
+  ],
+  "description": "Offsetting the slider axis from the crank pivot makes the forward and return strokes take different amounts of crank rotation, which gives a mild quick return. The crank still rotates fully while b >= a + |e|.",
+  "expected_class": "Slider-crank",
+  "mechanism": {
+    "type": "slider_crank",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 30,
+    "b": 100,
+    "gamma": 0.0,
+    "e": 25,
+    "P": [
+      50.0,
+      20.0
+    ],
+    "branch": 1,
+    "driver": "crank"
+  }
+}

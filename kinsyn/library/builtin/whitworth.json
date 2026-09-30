@@ -1,0 +1,32 @@
+{
+  "id": "whitworth",
+  "name": "Whitworth quick-return",
+  "group": "Slider families",
+  "tags": [
+    "inverted-slider",
+    "quick-return",
+    "slotted-link",
+    "shaper"
+  ],
+  "description": "The crank is longer than the ground link, so the slotted link also rotates fully, but at a non-uniform speed. It is the classic shaper and slotter drive.",
+  "expected_class": "Whitworth quick-return (slotted link rotates)",
+  "mechanism": {
+    "type": "inverted_slider",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 50,
+    "B0": [
+      -0.0,
+      -25.0
+    ],
+    "e": 0.0,
+    "P": [
+      -40.0,
+      0.0
+    ],
+    "branch": 1,
+    "driver": "crank"
+  }
+}

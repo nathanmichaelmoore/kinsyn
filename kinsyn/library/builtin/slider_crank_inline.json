@@ -1,0 +1,31 @@
+{
+  "id": "slider_crank_inline",
+  "name": "Slider-crank, in-line",
+  "group": "Slider families",
+  "tags": [
+    "slider-crank",
+    "slider",
+    "engine",
+    "pump",
+    "reciprocating"
+  ],
+  "description": "The slider axis passes through the crank pivot, so both strokes take equal time. It is the mechanism of piston engines, compressors and reciprocating pumps. Stroke = 2a.",
+  "expected_class": "Slider-crank",
+  "mechanism": {
+    "type": "slider_crank",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 30,
+    "b": 100,
+    "gamma": 0.0,
+    "e": 0.0,
+    "P": [
+      50.0,
+      20.0
+    ],
+    "branch": 1,
+    "driver": "crank"
+  }
+}

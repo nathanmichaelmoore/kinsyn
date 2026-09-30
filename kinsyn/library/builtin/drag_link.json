@@ -1,0 +1,32 @@
+{
+  "id": "drag_link",
+  "name": "Double-crank (drag link)",
+  "group": "Grashof classes",
+  "tags": [
+    "double-crank",
+    "drag-link",
+    "grashof",
+    "four-bar"
+  ],
+  "description": "The shortest link is the ground, so the input and output both rotate fully, at a varying speed ratio. It is used to produce non-uniform rotation, such as quick-return drives and pulsed feeds.",
+  "expected_class": "Double-crank (drag link)",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      30,
+      0
+    ],
+    "a": 70,
+    "b": 80,
+    "c": 90,
+    "P": [
+      40.0,
+      30.0
+    ],
+    "branch": 1
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "oscillating_cylinder",
+  "name": "Oscillating cylinder (hydraulic lever)",
+  "group": "Slider families",
+  "tags": [
+    "inverted-slider",
+    "cylinder",
+    "hydraulic",
+    "actuator",
+    "lever"
+  ],
+  "description": "A cylinder pivots on the ground at B0 and pushes a lever (the crank) at A. It is found in excavators, loaders, tailgates and dump beds. The transmission angle is the angle between the cylinder and the lever.",
+  "expected_class": "Oscillating cylinder (stroke input)",
+  "mechanism": {
+    "type": "inverted_slider",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 40,
+    "B0": [
+      120.0,
+      -30.0
+    ],
+    "e": 0.0,
+    "P": [
+      20.0,
+      0.0
+    ],
+    "branch": 1,
+    "driver": "stroke"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "triple_rocker",
+  "name": "Triple-rocker (non-Grashof)",
+  "group": "Grashof classes",
+  "tags": [
+    "triple-rocker",
+    "non-grashof",
+    "four-bar",
+    "oscillation"
+  ],
+  "description": "s + l > p + q, so no link rotates fully. The input rocks between two toggle positions, and at each one the linkage passes smoothly onto its other assembly.",
+  "expected_class": "Triple-rocker (non-Grashof)",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      100,
+      0
+    ],
+    "a": 70,
+    "b": 60,
+    "c": 80,
+    "P": [
+      30.0,
+      30.0
+    ],
+    "branch": 1
+  }
+}

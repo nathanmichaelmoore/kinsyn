@@ -1,0 +1,1 @@
+"""kinsyn: planar kinematic synthesis."""

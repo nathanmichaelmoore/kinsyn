@@ -1,0 +1,31 @@
+{
+  "id": "double_rocker_grashof",
+  "name": "Double-rocker (Grashof)",
+  "group": "Grashof classes",
+  "tags": [
+    "double-rocker",
+    "grashof",
+    "four-bar"
+  ],
+  "description": "The shortest link is the coupler. The coupler can rotate fully relative to the other links, but both grounded links only rock. It is common in steering linkages and level-luffing cranes.",
+  "expected_class": "Double-rocker (Grashof)",
+  "mechanism": {
+    "type": "fourbar",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "B0": [
+      100,
+      0
+    ],
+    "a": 80,
+    "b": 30,
+    "c": 90,
+    "P": [
+      15.0,
+      25.0
+    ],
+    "branch": 1
+  }
+}

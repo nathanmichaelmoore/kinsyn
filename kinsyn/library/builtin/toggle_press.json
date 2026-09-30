@@ -1,0 +1,36 @@
+{
+  "id": "toggle_press",
+  "name": "Toggle press / latch (slider, over-center)",
+  "group": "Over-center / toggle",
+  "tags": [
+    "over-center",
+    "toggle",
+    "press",
+    "latch",
+    "slider",
+    "mechanical-advantage"
+  ],
+  "description": "A slider-crank worked near its extended dead point. As the crank and coupler line up, the slider force multiplies without limit, which is why it is used for toggle presses, rivet squeezers and door latches. Stopping the crank just past alignment locks the slider under load.",
+  "expected_class": "Slider-crank",
+  "mechanism": {
+    "type": "slider_crank",
+    "A0": [
+      0.0,
+      0.0
+    ],
+    "a": 30,
+    "b": 90,
+    "gamma": 0.0,
+    "e": 0.0,
+    "P": [
+      45.0,
+      0.0
+    ],
+    "branch": 1,
+    "driver": "crank"
+  },
+  "operating_range": [
+    -1.2217304763960306,
+    0.06981317007977318
+  ]
+}

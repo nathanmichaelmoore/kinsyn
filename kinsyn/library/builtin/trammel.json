@@ -1,0 +1,26 @@
+{
+  "id": "trammel",
+  "name": "Elliptical trammel",
+  "group": "Slider families",
+  "tags": [
+    "trammel",
+    "double-slider",
+    "ellipse"
+  ],
+  "description": "Two sliders on crossed guides joined by a bar. Every point on the bar traces an ellipse, and the midpoint traces a circle.",
+  "expected_class": "Elliptical trammel",
+  "mechanism": {
+    "type": "trammel",
+    "O": [
+      0.0,
+      0.0
+    ],
+    "gamma1": 0.0,
+    "gamma2": 1.5707963267948966,
+    "b": 80,
+    "P": [
+      120.0,
+      0.0
+    ]
+  }
+}
