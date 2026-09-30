@@ -326,7 +326,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots.set_data(self.mech, circuit, derivs, ma, self.unit, self.mu_limit)
         self.summary.setText(self._summary_html(summary, intervals, full))
         self._ma = ma
-        self.index = min(self.index, N_SAMPLES - 1)
+        self.scrub.setRange(0, len(circuit.q) - 1)
+        self.index = min(self.index, len(circuit.q) - 1)
         self.show_index(int(self.index))
 
     def _update_motion_box(self, intervals, full):
@@ -416,8 +417,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _tick(self):
         if self.circuit is None:
             return
+        n = len(self.circuit.q)
+        # One input sweep of the base interval takes CYCLE_SECONDS at 1x.
         step = N_SAMPLES * self.timer.interval() / 1000.0 / CYCLE_SECONDS * self.speed.currentData()
-        self.index = (self.index + step) % N_SAMPLES
+        self.index = (self.index + step) % n
         self.show_index(int(self.index))
 
     def seek(self, i):

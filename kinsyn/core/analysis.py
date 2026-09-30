@@ -82,14 +82,11 @@ def circuit_inputs(interval, full, n=720):
     ])
 
 
-def trace_circuit(mech: Mechanism, interval, full, n=720) -> Circuit:
-    """Solve along the circuit, choosing between the two assemblies at each
-    step by continuity (linear prediction from the previous two samples).
-    This keeps a parallelogram a parallelogram through its change point and
-    switches assembly at the limits of a rocking input, as the real linkage does."""
-    q = circuit_inputs(interval, full, n)
-    if not mech.has_branches:
-        return Circuit(mech.solve(q), interval, full)
+def _track(mech, q):
+    """Solve along q, choosing between the two assemblies at each step by
+    continuity (linear prediction from the previous two samples). Returns
+    (frames, closes) where `closes` says whether the last sample flows back
+    into the first, i.e. the motion repeats after this input sweep."""
     fa = mech.solve(q, mech.branch)
     fb = mech.solve(q, -mech.branch)
     keys = [k for k in fa.points if not k.startswith("dir:")]
@@ -104,7 +101,32 @@ def trace_circuit(mech: Mechanism, interval, full, n=720) -> Circuit:
         take_b[i] = db < da
         cur = Xb[:, i] if take_b[i] else Xa[:, i]
         prev2, prev = prev, cur
-    return Circuit(Frames.select(fa, fb, take_b), interval, full)
+    # Would the next step land on the first sample's assembly?
+    pred = 2 * prev - prev2
+    closes = np.nansum(np.abs(Xa[:, 0] - pred)) <= np.nansum(np.abs(Xb[:, 0] - pred))
+    return Frames.select(fa, fb, take_b), bool(closes)
+
+
+def trace_circuit(mech: Mechanism, interval, full, n=720) -> Circuit:
+    """Solve along one continuous cycle of motion, tracking the assembly by
+    continuity. This keeps a parallelogram a parallelogram through its
+    change point and switches assembly at the limits of a rocking input, as
+    the real linkage does.
+
+    At a general change point the linkage passes onto its other assembly, so
+    one input revolution does not repeat the motion; the cycle is then two
+    revolutions long (the returned circuit's interval spans 4 pi)."""
+    q = circuit_inputs(interval, full, n)
+    if not mech.has_branches:
+        return Circuit(mech.solve(q), interval, full)
+    frames, closes = _track(mech, q)
+    if full and not closes:
+        lo, hi = interval
+        span = hi - lo
+        q2 = lo + 0.25 * span + np.arange(2 * n) * span / n
+        frames, _ = _track(mech, q2)
+        return Circuit(frames, (lo, lo + 2 * span), True)
+    return Circuit(frames, interval, full)
 
 
 def mechanical_advantage(mech: Mechanism, circuit: Circuit):

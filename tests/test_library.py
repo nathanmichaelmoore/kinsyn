@@ -34,3 +34,20 @@ def test_user_entries_roundtrip(tmp_path):
     save_user_entry(mine, tmp_path)
     loaded = [e for e in load_all(tmp_path) if not e.builtin]
     assert len(loaded) == 1 and loaded[0].mechanism == mine.mechanism
+
+
+@pytest.mark.parametrize("entry", ENTRIES, ids=lambda e: e.id)
+def test_entry_animation_closes_smoothly(entry):
+    """The circuit is a closed loop: no jump from the last frame to the first."""
+    _, _, circuit, _ = analyze(entry.mechanism, operating=entry.operating_range)
+    f = circuit.frames
+    X = np.stack([v for k, v in f.points.items() if not k.startswith("dir:")])
+    steps = np.abs(np.diff(np.concatenate([X, X[:, :1]], axis=1), axis=1)).max(axis=0)
+    assert steps[-1] < 5 * np.median(steps) + 1e-9
+
+
+def test_change_point_needs_two_turns():
+    e = next(x for x in ENTRIES if x.id == "change_point")
+    _, _, circuit, _ = analyze(e.mechanism)
+    lo, hi = circuit.interval
+    assert circuit.full_rotation and np.isclose(hi - lo, 4 * np.pi)
