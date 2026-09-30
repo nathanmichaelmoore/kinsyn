@@ -251,3 +251,38 @@ def analyze(mech: Mechanism, circuit_index=0, n=720, operating=None, mu_limit=MU
     circuit_index = min(circuit_index, len(intervals) - 1)
     circuit = trace_circuit(mech, intervals[circuit_index], full, n)
     return intervals, full, circuit, summarize(mech, circuit, intervals, full, mu_limit)
+
+
+def circuit_derivatives(mech: Mechanism, circuit: Circuit, speed):
+    """Velocities and accelerations along a circuit for an input driven at a
+    constant `speed` (rad/s for a rotary input, mm/s for a linear one).
+
+    The circuit is a closed loop, so derivatives are taken periodically. For
+    a rocking input the input reverses instantly at each end of its range,
+    which shows up as acceleration spikes there. Returns a dict of arrays:
+    t (s), output_vel, output_acc (rad/s, rad/s^2 or mm/s, mm/s^2),
+    P_vel, P_acc (complex, mm/s and mm/s^2)."""
+    f = circuit.frames
+    q = circuit.q
+    n = len(q)
+    lo, hi = circuit.interval
+    q_next = np.append(q[1:], q[0] + (hi - lo if circuit.full_rotation else 0.0))
+    dt = np.abs(q_next - q) / speed
+    t = np.concatenate([[0.0], np.cumsum(dt)])
+    T = t[-1]
+    te = np.concatenate([t[n - 2:n] - T, t[:n], t[:2] + T])
+
+    def deriv(x, wind=0.0):
+        xe = np.concatenate([x[-2:] - wind, x, x[:2] + wind])
+        return np.gradient(xe, te)[2:-2]
+
+    out = f.output
+    wind = 0.0
+    if mech.output_kind == "angle":
+        closed = np.unwrap(np.append(out, out[0]))
+        out, wind = closed[:-1], closed[-1] - closed[0]
+    out_vel = deriv(out, wind)
+    P = f.points[mech.drawing().tracer]
+    P_vel = deriv(P)
+    return {"t": t[:n], "period": T, "output_vel": out_vel, "output_acc": deriv(out_vel),
+            "P_vel": P_vel, "P_acc": deriv(P_vel)}

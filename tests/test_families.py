@@ -133,3 +133,27 @@ def test_toggle_press_over_center():
 @pytest.mark.parametrize("m", ALL_DEFAULTS, ids=lambda m: m.kind)
 def test_serialization_roundtrip(m):
     assert Mechanism.from_dict(m.to_dict()) == m
+
+
+def test_scotch_yoke_derivatives_are_harmonic():
+    from kinsyn.core.analysis import circuit_derivatives
+    m = ScotchYoke(a=40)
+    _, _, circuit, _ = analyze(m, n=2000)
+    w = 2 * math.pi  # 60 rpm
+    d = circuit_derivatives(m, circuit, w)
+    q = circuit.q
+    assert np.allclose(d["output_vel"], -40 * w * np.sin(q), atol=0.05 * 40 * w)
+    assert np.allclose(d["output_acc"], -40 * w * w * np.cos(q), atol=0.05 * 40 * w * w)
+    assert d["period"] == pytest.approx(1.0)
+
+
+def test_crank_rocker_velocity_matches_finite_difference():
+    from kinsyn.core.analysis import circuit_derivatives
+    m = FourBar(B0=100, a=30, b=85, c=60)
+    _, _, circuit, _ = analyze(m, n=1440)
+    d = circuit_derivatives(m, circuit, 1.0)  # 1 rad/s: velocity = d(out)/dq
+    i = 300
+    q = circuit.q[i]
+    h = 1e-6
+    num = (m.solve(np.array([q + h])).output[0] - m.solve(np.array([q - h])).output[0]) / (2 * h)
+    assert d["output_vel"][i] == pytest.approx(num, rel=1e-3)

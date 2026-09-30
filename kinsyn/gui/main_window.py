@@ -8,7 +8,7 @@ import re
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from kinsyn.core.analysis import analyze, mechanical_advantage, trace_circuit
+from kinsyn.core.analysis import analyze, circuit_derivatives, mechanical_advantage, trace_circuit
 from kinsyn.core.families import FourBar
 from kinsyn.core.mechanism import REGISTRY
 from kinsyn.core.units import LENGTH_UNITS, format_angle, format_length
@@ -39,6 +39,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.circuit_index = 0
         self.circuit = None
         self.index = 0.0
+        self.speed_rpm = 60.0  # rotary input speed
+        self.speed_lin = 50.0  # linear input speed, mm/s
         self.source = None  # library entry the current design started from
         self.baseline = (self.mech, None)  # what Reset restores
         self.mu_limit = math.radians(self.prefs["analysis/mu_limit_deg"])
@@ -89,8 +91,9 @@ class MainWindow(QtWidgets.QMainWindow):
         bottom = QtWidgets.QWidget()
         bl = QtWidgets.QVBoxLayout(bottom)
         bl.addLayout(self._build_playback())
-        self.plots = CircuitPlots()
+        self.plots = CircuitPlots(self.settings.get_raw("plots/panels"))
         self.plots.scrubbed.connect(self.seek)
+        self.plots.panelsChanged.connect(lambda keys: self.settings.set_raw("plots/panels", keys))
         bl.addWidget(self.plots)
         motion_dock = self._dock("Motion", bottom, QtCore.Qt.BottomDockWidgetArea)
         self.resizeDocks([lib_dock, mech_dock], [280, 460], QtCore.Qt.Horizontal)
@@ -171,6 +174,17 @@ class MainWindow(QtWidgets.QMainWindow):
         hl.addWidget(self.op_hi)
         self.op_row = row
         form.addRow(row)
+        # Constant input speed used for the velocity / acceleration plots.
+        srow = QtWidgets.QWidget()
+        sl = QtWidgets.QHBoxLayout(srow)
+        sl.setContentsMargins(0, 0, 0, 0)
+        self.speed_field = QtWidgets.QDoubleSpinBox()
+        self.speed_field.setRange(0.001, 1e6)
+        self.speed_field.setDecimals(3)
+        self.speed_field.setKeyboardTracking(False)
+        self.speed_field.valueChanged.connect(self.on_speed_edit)
+        sl.addWidget(self.speed_field, 1)
+        form.addRow("Input speed", srow)
         return box
 
     def _build_playback(self):
@@ -245,6 +259,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self.operating = (self.op_lo.value, self.op_hi.value)
         self.recompute()
 
+    def _input_speed(self):
+        """Input speed in rad/s (rotary) or mm/s (linear)."""
+        if self.mech.input_kind == "angle":
+            return self.speed_rpm * 2 * math.pi / 60
+        return self.speed_lin
+
+    def _update_speed_field(self):
+        self.speed_field.blockSignals(True)
+        if self.mech.input_kind == "angle":
+            self.speed_field.setSuffix(" rpm")
+            self.speed_field.setValue(self.speed_rpm)
+        else:
+            self.speed_field.setSuffix(f" {self.unit}/s")
+            self.speed_field.setValue(self.speed_lin / LENGTH_UNITS[self.unit])
+        self.speed_field.blockSignals(False)
+
+    def on_speed_edit(self, v):
+        if self.mech.input_kind == "angle":
+            self.speed_rpm = v
+        else:
+            self.speed_lin = v * LENGTH_UNITS[self.unit]
+        self.recompute()
+
     def reset_mechanism(self):
         """Restore the template (or type defaults) the design started from."""
         self.mech, self.operating = self.baseline
@@ -262,6 +299,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def recompute(self, autorange=False):
         self._update_source_label()
+        self._update_speed_field()
         intervals, full, circuit, summary = analyze(self.mech, self.circuit_index, N_SAMPLES,
                                                     self.operating, self.mu_limit)
         self.circuit = circuit
@@ -284,7 +322,8 @@ class MainWindow(QtWidgets.QMainWindow):
         toggles = [i for i, _ in summary.toggles]
         self.view.set_circuit(self.mech, circuit, others, toggles, autorange)
         ma = mechanical_advantage(self.mech, circuit)
-        self.plots.set_data(self.mech, circuit, ma, self.unit, self.mu_limit)
+        derivs = circuit_derivatives(self.mech, circuit, self._input_speed())
+        self.plots.set_data(self.mech, circuit, derivs, ma, self.unit, self.mu_limit)
         self.summary.setText(self._summary_html(summary, intervals, full))
         self._ma = ma
         self.index = min(self.index, N_SAMPLES - 1)
@@ -351,7 +390,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if s.time_ratio:
             rows.append(("Time ratio", f"{s.time_ratio:.3f}"))
         if s.toggles:
-            rows.append(("Toggle positions", ", ".join(self._fmt_in(q) for _, q in s.toggles)))
+            wrap = (lambda q: q % (2 * math.pi)) if self.mech.input_kind == "angle" else (lambda q: q)
+            rows.append(("Toggle positions", ", ".join(self._fmt_in(wrap(q)) for _, q in s.toggles)))
         if s.over_center is not None:
             val = (f"{format_angle(s.over_center, 2)}°" if self.mech.input_kind == "angle"
                    else f"{format_length(s.over_center, self.unit)} {self.unit}")
