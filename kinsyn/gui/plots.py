@@ -9,6 +9,8 @@ from PySide6 import QtCore, QtWidgets
 
 from kinsyn.core.units import LENGTH_UNITS
 
+from .style import style_plot
+
 CURSOR = "#f0a04b"
 BAD = (239, 83, 80, 40)
 
@@ -21,10 +23,11 @@ class CircuitPlots(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self.n = 1
+        self.pt = 9.0
         self.plots, self.curves, self.cursors = [], [], []
-        titles = ("Transmission angle (deg)", "Output", "Mechanical advantage")
-        for title in titles:
-            w = pg.PlotWidget(title=title)
+        self.titles = ["Transmission angle (deg)", "Output", "Mechanical advantage"]
+        for title in self.titles:
+            w = pg.PlotWidget()
             w.showGrid(x=True, y=True, alpha=0.12)
             w.setLabel("bottom", "circuit position (%)")
             w.getPlotItem().hideButtons()
@@ -39,8 +42,24 @@ class CircuitPlots(QtWidgets.QWidget):
             self.cursors.append(cursor)
         self.mu_plot, self.out_plot, self.ma_plot = self.plots
         self.ma_plot.setLogMode(y=True)
-        self.mu_limit = None
+        self.mu_bands = [pg.LinearRegionItem((0, 0), orientation="horizontal", movable=False, brush=BAD)
+                         for _ in range(2)]
+        for b in self.mu_bands:
+            b.setZValue(-10)
+            for line in b.lines:
+                line.setPen(pg.mkPen(None))
+            self.mu_plot.addItem(b)
         self._busy = False
+        self.set_font(self.pt)
+
+    def set_font(self, pt):
+        self.pt = pt
+        for w, title in zip(self.plots, self.titles):
+            style_plot(w.getPlotItem(), pt, title)
+
+    def _set_title(self, i, text):
+        self.titles[i] = text
+        self.plots[i].setTitle(text, size=f"{self.pt + 1}pt")
 
     def set_data(self, mech, circuit, ma, unit, mu_limit):
         f = circuit.frames
@@ -52,16 +71,9 @@ class CircuitPlots(QtWidgets.QWidget):
         else:
             self.curves[0].setData([], [])
         self.mu_plot.setYRange(0, 180)
-        if self.mu_limit is None:
-            lim = math.degrees(mu_limit)
-            self.mu_bands = [pg.LinearRegionItem((0, lim), orientation="horizontal", movable=False, brush=BAD),
-                             pg.LinearRegionItem((180 - lim, 180), orientation="horizontal", movable=False, brush=BAD)]
-            for b in self.mu_bands:
-                b.setZValue(-10)
-                for line in b.lines:
-                    line.setPen(pg.mkPen(None))
-                self.mu_plot.addItem(b)
-            self.mu_limit = lim
+        lim = math.degrees(mu_limit)
+        self.mu_bands[0].setRegion((0, lim))
+        self.mu_bands[1].setRegion((180 - lim, 180))
 
         out = f.output
         if mech.output_kind == "angle":
@@ -70,7 +82,7 @@ class CircuitPlots(QtWidgets.QWidget):
         else:
             out = out / LENGTH_UNITS[unit]
             label = f"{mech.output_label} ({unit})"
-        self.out_plot.setTitle(label)
+        self._set_title(1, label)
         self.curves[1].setData(x, out)
 
         m = np.where(np.isfinite(ma) & (ma > 0), ma, np.nan)
@@ -78,7 +90,7 @@ class CircuitPlots(QtWidgets.QWidget):
         self.curves[2].setData(x, m, connect="finite")
         unit_note = "" if mech.input_kind == mech.output_kind else (
             " (per mm)" if mech.output_kind == "length" else " (mm)")
-        self.ma_plot.setTitle("Mechanical advantage" + unit_note)
+        self._set_title(2, "Mechanical advantage" + unit_note)
 
     def set_index(self, i):
         self._busy = True

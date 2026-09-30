@@ -8,7 +8,7 @@ import re
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from kinsyn.core.analysis import MU_LIMIT_DEFAULT, analyze, mechanical_advantage, trace_circuit
+from kinsyn.core.analysis import analyze, mechanical_advantage, trace_circuit
 from kinsyn.core.families import FourBar
 from kinsyn.core.mechanism import REGISTRY
 from kinsyn.core.units import LENGTH_UNITS, format_angle, format_length
@@ -17,6 +17,7 @@ from kinsyn.library.catalog import Entry, save_user_entry
 from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
+from .settings import DEFAULTS, PreferencesDialog, Settings, apply_app_font, clamp_font
 from .view import MechanismView
 
 SPEEDS = [("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)]
@@ -29,13 +30,16 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("kinsyn: planar kinematic synthesis")
         self.resize(1500, 950)
-        self.unit = "mm"
+        self.settings = Settings()
+        self.prefs = {k: self.settings.get(k) for k in DEFAULTS}
+        apply_app_font(self.prefs["ui/font_pt"])
+        self.unit = self.prefs["units/default"]
         self.mech = FourBar()
         self.operating = None  # (lo, hi) in input units, or None
         self.circuit_index = 0
         self.circuit = None
         self.index = 0.0
-        self.mu_limit = MU_LIMIT_DEFAULT
+        self.mu_limit = math.radians(self.prefs["analysis/mu_limit_deg"])
 
         self.view = MechanismView()
         self.setCentralWidget(self.view)
@@ -84,11 +88,21 @@ class MainWindow(QtWidgets.QMainWindow):
         # Status bar: units
         self.unit_combo = QtWidgets.QComboBox()
         self.unit_combo.addItems(list(LENGTH_UNITS))
+        self.unit_combo.setCurrentText(self.unit)
         self.unit_combo.currentTextChanged.connect(self.set_units)
         self.statusBar().addPermanentWidget(QtWidgets.QLabel("Units:"))
         self.statusBar().addPermanentWidget(self.unit_combo)
 
         self._build_menu()
+        self._default_layout = self.saveState()
+        self.editor.set_units(self.unit)
+        self.view.set_units(self.unit)
+        self._apply_fonts()
+        geo, state = self.settings.get_raw("window/geometry"), self.settings.get_raw("window/state")
+        if geo is not None:
+            self.restoreGeometry(geo)
+        if state is not None:
+            self.restoreState(state)
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(16)
         self.timer.timeout.connect(self._tick)
@@ -110,7 +124,16 @@ class MainWindow(QtWidgets.QMainWindow):
         act = QtGui.QAction("Save to library…", self, shortcut="Ctrl+S", triggered=self.save_to_library)
         m.addAction(act)
         m.addAction(QtGui.QAction("Quit", self, shortcut="Ctrl+Q", triggered=self.close))
+        e = self.menuBar().addMenu("&Edit")
+        e.addAction(QtGui.QAction("Preferences…", self, shortcut="Ctrl+,", triggered=self.show_preferences))
         v = self.menuBar().addMenu("&View")
+        v.addAction(QtGui.QAction("Larger text", self, shortcuts=["Ctrl+=", "Ctrl++"],
+                                  triggered=lambda: self.change_text_size(+0.5)))
+        v.addAction(QtGui.QAction("Smaller text", self, shortcut="Ctrl+-",
+                                  triggered=lambda: self.change_text_size(-0.5)))
+        v.addAction(QtGui.QAction("Default text size", self, shortcut="Ctrl+0",
+                                  triggered=lambda: self.change_text_size(None)))
+        v.addSeparator()
         v.addAction(QtGui.QAction("Fit to window", self, shortcut="F", triggered=self.view.autorange))
         v.addAction(QtGui.QAction("Play / pause", self, shortcut="Space", triggered=self.toggle_play))
 
@@ -159,8 +182,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout = QtWidgets.QLabel()
         self.readout.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
         self.readout.setTextFormat(QtCore.Qt.PlainText)
-        self.readout.setFixedWidth(self.readout.fontMetrics().horizontalAdvance(
-            self._readout_text(-99999.999, -99999.999, 179.9, 99999.99, "length", "length", "mm") + "  "))
         hl.addWidget(self.readout)
         return hl
 
@@ -354,6 +375,47 @@ class MainWindow(QtWidgets.QMainWindow):
         mu_txt = f"{math.degrees(mu):5.1f}°" if np.isfinite(mu) else "  n/a "
         ma_txt = f"{ma:8.2f}" if np.isfinite(ma) and ma < 1e4 else "       ∞"
         return f"input {val(q, in_kind)}  output {val(out, out_kind)}  μ {mu_txt}  MA {ma_txt}"
+
+    # --- preferences ---------------------------------------------------
+    def _apply_fonts(self):
+        apply_app_font(self.prefs["ui/font_pt"])
+        f = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
+        f.setPointSizeF(self.prefs["ui/font_pt"])
+        self.readout.setFont(f)
+        self.readout.setFixedWidth(QtGui.QFontMetrics(f).horizontalAdvance(
+            self._readout_text(-99999.999, -99999.999, 179.9, 99999.99, "length", "length", "mm") + "  "))
+        self.plots.set_font(self.prefs["ui/plot_font_pt"])
+        self.view.set_font(self.prefs["ui/plot_font_pt"])
+
+    def apply_preferences(self, values):
+        self.prefs.update(values)
+        for k, v in values.items():
+            self.settings.set(k, v)
+        self._apply_fonts()
+        mu_limit = math.radians(self.prefs["analysis/mu_limit_deg"])
+        if mu_limit != self.mu_limit:
+            self.mu_limit = mu_limit
+            self.recompute()
+
+    def change_text_size(self, delta):
+        if delta is None:
+            ui, plot = DEFAULTS["ui/font_pt"], DEFAULTS["ui/plot_font_pt"]
+        else:
+            ui = clamp_font(self.prefs["ui/font_pt"] + delta)
+            plot = clamp_font(self.prefs["ui/plot_font_pt"] + delta)
+        self.apply_preferences({"ui/font_pt": ui, "ui/plot_font_pt": plot})
+        self.statusBar().showMessage(f"Text size {ui:g} pt (plots {plot:g} pt)", 2000)
+
+    def show_preferences(self):
+        dlg = PreferencesDialog(self.prefs, self)
+        dlg.applied.connect(self.apply_preferences)
+        dlg.resetLayout.connect(lambda: self.restoreState(self._default_layout))
+        dlg.exec()
+
+    def closeEvent(self, event):
+        self.settings.set_raw("window/geometry", self.saveGeometry())
+        self.settings.set_raw("window/state", self.saveState())
+        super().closeEvent(event)
 
     # --- units / library -------------------------------------------------
     def set_units(self, unit):

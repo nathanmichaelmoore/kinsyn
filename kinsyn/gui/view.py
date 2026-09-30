@@ -6,6 +6,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kinsyn.core.units import LENGTH_UNITS
 
+from .style import style_plot
+
 LINK = "#c8d0dc"
 COUPLER = "#f0a04b"
 CURVE = "#4fc3f7"
@@ -57,11 +59,15 @@ class MechanismView(pg.PlotWidget):
 
     def set_units(self, unit):
         self.factor = LENGTH_UNITS[unit]
-        for axis in ("bottom", "left"):
-            self.setLabel(axis, units=None, text=unit)
+        self.unit = unit
+        style_plot(self.getPlotItem(), getattr(self, "pt", 9.0), labels={"bottom": unit, "left": unit})
         if self.circuit is not None:
             self._draw_static()
             self.autorange()
+
+    def set_font(self, pt):
+        self.pt = pt
+        style_plot(self.getPlotItem(), pt, labels={"bottom": self.unit, "left": self.unit})
 
     # --- content ---------------------------------------------------------
     def clear_mechanism(self):

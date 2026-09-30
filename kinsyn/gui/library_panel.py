@@ -28,6 +28,12 @@ class LibraryPanel(QtWidgets.QWidget):
         lay.addWidget(self.info, 2)
         self._populate()
 
+    def changeEvent(self, event):
+        # Group headers carry an explicit bold font; rebuild them at the new size.
+        if event.type() == QtCore.QEvent.FontChange:
+            self._populate()
+        super().changeEvent(event)
+
     def reload(self):
         self.entries = load_all()
         self._populate()
