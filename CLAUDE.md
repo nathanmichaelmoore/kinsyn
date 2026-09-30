@@ -10,6 +10,19 @@ logs are untouched.
   points); `kinsyn/gui/` is the Qt layer; `kinsyn/library/builtin/` holds the
   JSON templates (each has an `expected_class` checked by the tests).
 
+## Docs
+
+Every user-facing feature needs help. That means:
+- a tooltip;
+- where a term is involved, an entry in `kinsyn/help/topics.py` (`TERMS`);
+- a Markdown article or tutorial section in `kinsyn/help/docs/` (add it to
+  `TOC`).
+
+Regenerate the diagrams with `tools/make_diagrams.py` and the screenshots
+with `tools/make_screenshots.py` (offscreen, with scratch XDG dirs).
+`tests/test_help.py` checks links, images and topics. The audience is
+**not** experts, so explain terms plainly.
+
 ## When kinsyn crashes
 
 Always use the **diagnose-crash** skill, and read kinsyn's own diagnostics,

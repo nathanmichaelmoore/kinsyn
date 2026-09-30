@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtWidgets
 
 import kinsyn.core.families  # noqa: F401  (registers mechanism types)
 from kinsyn.core.mechanism import REGISTRY
+from kinsyn.help.topics import PARAM_TERMS, TERMS
 from kinsyn.core.units import format_angle, format_length, parse_angle, parse_length
 
 SLIDER_STEPS = 1000
@@ -174,9 +175,13 @@ class ParamEditor(QtWidgets.QWidget):
                 row.activated.connect(lambda _, n=p.name, w=row: self._set(n, w.currentData()))
             self.rows[p.name] = row
             label = QtWidgets.QLabel(p.label)
-            if p.help:
-                label.setToolTip(p.help)
-                row.setToolTip(p.help)
+            tip = p.help
+            if p.name in PARAM_TERMS:
+                title, short, _ = TERMS[PARAM_TERMS[p.name]]
+                tip = f"<b>{title}</b><br>{short}" + (f"<br><br>{p.help}" if p.help else "")
+            if tip:
+                label.setToolTip(tip)
+                row.setToolTip(tip)
             self.form.addRow(label, row)
 
     def _set(self, name, value):

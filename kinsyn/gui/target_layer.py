@@ -6,13 +6,18 @@ import math
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui, QtWidgets
 
 GHOST = "#b39ddb"
 SELECTED = "#ffd54f"
 WARN = "#ef5350"
 SNAP = "#66bb6a"
 PREVIEW = "#80cbc4"
+CURVE_T = "#4dd0e1"
+ZONE_OK = "#66bb6a"
+ZONE_NO = "#ef5350"
+PIVOT_T = "#ffb74d"
+MEASURE = "#fff176"
 
 ARROW_PX = 46  # pose arrow / rotation handle distance, screen pixels
 
@@ -30,7 +35,10 @@ class TargetLayer(QtCore.QObject):
         self.guides = []
         self.preview = pg.PlotDataItem(pen=pg.mkPen(PREVIEW, width=2, style=QtCore.Qt.DashLine))
         self.preview_pts = pg.ScatterPlotItem(size=8, pen=pg.mkPen(PREVIEW), brush=pg.mkBrush(PREVIEW))
-        for it in (self.snap_marker, self.snap_text, self.preview, self.preview_pts):
+        self.measure_line = pg.PlotDataItem(pen=pg.mkPen(MEASURE, width=1.5))
+        self.measure_text = pg.TextItem(color=MEASURE, anchor=(0.5, 1.4))
+        for it in (self.snap_marker, self.snap_text, self.preview, self.preview_pts, self.measure_line,
+                   self.measure_text):
             it.setZValue(60)
             view.addItem(it)
         doc.changed.connect(self.redraw)
@@ -70,11 +78,59 @@ class TargetLayer(QtCore.QObject):
                 best = (d, "pos", k.id)
         return None if best is None else best[1:]
 
+    def hit_items(self, p, tol_px=9):
+        """Curve control points, zone corners and fixed pivots under p:
+        (kind, id, index) or None."""
+        tol = tol_px * self.mm_per_px()
+        t = self.doc.target
+        best = None
+        cands = [("pivot", f.id, None, f.pos) for f in t.pivots]
+        cands += [("curve", c.id, i, q) for c in t.curves for i, q in enumerate(c.points)]
+        cands += [("zone", z.id, i, q) for z in t.zones for i, q in enumerate(z.polygon)]
+        for kind, iid, idx, q in cands:
+            d = abs(q - p)
+            if d <= tol and (best is None or d < best[0]):
+                best = (d, (kind, iid, idx))
+        return None if best is None else best[1]
+
+    def _draw_items(self):
+        t = self.doc.target
+        sel = self.doc.selected_item
+        sel_id = sel[1] if sel else None
+        for z in t.zones:
+            col = ZONE_OK if z.allow else ZONE_NO
+            poly = QtWidgets.QGraphicsPolygonItem(QtGui.QPolygonF(
+                [QtCore.QPointF(*[v[0] for v in self._xy([q])]) for q in z.polygon]))
+            c = QtGui.QColor(col)
+            c.setAlpha(40)
+            poly.setBrush(QtGui.QBrush(c))
+            poly.setPen(pg.mkPen(col, width=2.5 if z.id == sel_id else 1.2,
+                                 style=QtCore.Qt.SolidLine if z.allow else QtCore.Qt.DashLine))
+            self._add(poly, 30)
+            self._add(pg.ScatterPlotItem(*self._xy(z.polygon), size=7, symbol="s", brush=pg.mkBrush(col),
+                                         pen=None), 45)
+        for c in t.curves:
+            selc = c.id == sel_id
+            self._add(pg.PlotDataItem(*self._xy(c.dense()), pen=pg.mkPen(CURVE_T, width=3 if selc else 2)), 36)
+            self._add(pg.ScatterPlotItem(*self._xy(c.points), size=8 if selc else 6, symbol="o",
+                                         brush=pg.mkBrush(SELECTED if selc else CURVE_T), pen=None), 45)
+        for f in t.pivots:
+            col = SELECTED if f.id == sel_id else PIVOT_T
+            if f.slider_angle is not None:
+                d = 3 * ARROW_PX * self.mm_per_px() * complex(math.cos(f.slider_angle), math.sin(f.slider_angle))
+                self._add(pg.PlotDataItem(*self._xy([f.pos - d, f.pos + d]),
+                                          pen=pg.mkPen(col, width=2, style=QtCore.Qt.DashLine)), 37)
+            self._add(pg.ScatterPlotItem(*self._xy([f.pos]), size=20, symbol="t1", brush=pg.mkBrush(col + "55"),
+                                         pen=pg.mkPen(col, width=2)), 45)
+            self._add(pg.ScatterPlotItem(*self._xy([f.pos]), size=8, symbol="o", brush=pg.mkBrush("#15171c"),
+                                         pen=pg.mkPen(col, width=2)), 46)
+
     # --- drawing ---------------------------------------------------------
     def redraw(self):
         for it in self.items:
             self.view.removeItem(it)
         self.items = []
+        self._draw_items()
         t = self.doc.target
         if not t.keyframes and t.body is None:
             return
@@ -142,6 +198,16 @@ class TargetLayer(QtCore.QObject):
     def show_preview(self, line=None, points=None):
         self.preview.setData(*self._xy(line) if line is not None and len(line) else ([], []))
         self.preview_pts.setData(*self._xy(points) if points is not None and len(points) else ([], []))
+
+    def show_measure(self, seg, text=""):
+        if seg is None:
+            self.measure_line.setData([], [])
+            self.measure_text.setText("")
+            return
+        a, b = seg
+        self.measure_line.setData(*self._xy([a, b]))
+        self.measure_text.setText(text)
+        self.measure_text.setPos(*[v[0] for v in self._xy([(a + b) / 2])])
 
     def clear_feedback(self):
         self.show_snap(None)

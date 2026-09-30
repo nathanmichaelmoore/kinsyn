@@ -325,6 +325,32 @@ four-bar that traces a desired shape.
   definition, the ranges for its sliders, a description, and its tags.
   Thumbnails are generated from the geometry, never stored as images.
 
+## Help and learning
+
+Assume users are **not** kinematics experts. Help must always be one click
+away, but never in the way: no modal pop-ups and no forced tours.
+
+Help is layered, from lightest to deepest:
+1. **Tooltips:** one-line definitions on hover (terms, parameters, plots,
+   tools).
+2. **"?" links:** on key terms in the analysis summary and on each plot,
+   opening the matching article.
+3. **Help window (F1):** non-modal and searchable, with three sections:
+   - **Tutorials:** step-by-step guides with screenshots and diagrams.
+   - **Concepts:** plain-language articles, each covering what it is, why
+     it matters, how it appears in kinsyn, and a rule of thumb.
+   - **Reference:** tools, shortcuts, and the values you can type into
+     fields.
+4. **(Later) Guided tutorials:** an optional side panel with a checklist
+   that ticks off steps as you actually do them, plus example projects.
+
+How the docs are built and kept correct:
+- Docs are Markdown files in `kinsyn/help/docs/`, versioned in the repo.
+- Diagrams are generated from the real geometry code by
+  `tools/make_diagrams.py`, and screenshots by `tools/make_screenshots.py`,
+  so they stay accurate.
+- Tests check that every link, image and help topic resolves.
+
 ## Over-center (toggle) mechanisms
 
 Over-center locks are a first-class design target, used in toggle clamps,
@@ -498,6 +524,9 @@ on both, whatever the option is set to.
   and project JSON.
 
 ## Milestones
+
+Status (2026-09-30): milestones 1 and 2 are done, plus help and docs,
+preferences and crash diagnostics. Milestone 3 is next.
 
 1. **Core analysis and viewer.** Joint and mechanism model with R and P
    joints, position analysis for the four-bar and every slider variant,

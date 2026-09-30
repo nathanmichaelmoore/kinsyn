@@ -11,6 +11,8 @@ from PySide6 import QtCore, QtWidgets
 
 from kinsyn.core.units import LENGTH_UNITS
 
+from kinsyn.help.topics import PLOT_TERMS, TERMS
+
 from .style import style_plot
 
 CURSOR = "#f0a04b"
@@ -29,6 +31,8 @@ DEFAULT_PANELS = ["mu", "out", "out_vel", "out_acc"]
 
 
 class PlotPanel(QtWidgets.QWidget):
+    helpRequested = QtCore.Signal(str)
+
     def __init__(self, key):
         super().__init__()
         lay = QtWidgets.QVBoxLayout(self)
@@ -37,8 +41,18 @@ class PlotPanel(QtWidgets.QWidget):
         self.combo = QtWidgets.QComboBox()
         for k, label in QUANTITIES:
             self.combo.addItem(label, k)
+            self.combo.setItemData(self.combo.count() - 1, TERMS[PLOT_TERMS[k]][1], QtCore.Qt.ToolTipRole)
         self.combo.setCurrentIndex(self.combo.findData(key))
-        lay.addWidget(self.combo)
+        head = QtWidgets.QHBoxLayout()
+        head.setSpacing(2)
+        head.addWidget(self.combo, 1)
+        q = QtWidgets.QToolButton()
+        q.setText("?")
+        q.setAutoRaise(True)
+        q.setToolTip("What does this plot mean?")
+        q.clicked.connect(lambda: self.helpRequested.emit(PLOT_TERMS[self.key]))
+        head.addWidget(q)
+        lay.addLayout(head)
         self.plot = pg.PlotWidget()
         self.plot.showGrid(x=True, y=True, alpha=0.12)
         self.plot.getPlotItem().hideButtons()
@@ -63,6 +77,7 @@ class PlotPanel(QtWidgets.QWidget):
 class CircuitPlots(QtWidgets.QWidget):
     scrubbed = QtCore.Signal(int)
     panelsChanged = QtCore.Signal(list)
+    helpRequested = QtCore.Signal(str)
 
     def __init__(self, keys=None):
         super().__init__()
@@ -78,6 +93,7 @@ class CircuitPlots(QtWidgets.QWidget):
             p = PlotPanel(key if key in valid else "mu")
             p.cursor.sigPositionChanged.connect(self._on_cursor)
             p.combo.currentIndexChanged.connect(self._on_panel_changed)
+            p.helpRequested.connect(self.helpRequested)
             lay.addWidget(p)
             self.panels.append(p)
         self.set_font(self.pt)

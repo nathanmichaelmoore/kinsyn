@@ -32,8 +32,14 @@ class EditViewBox(pg.ViewBox):
         return complex(v.x(), v.y()) * self.factor
 
     def mouseClickEvent(self, ev):
-        if self.tool is not None and ev.button() == QtCore.Qt.LeftButton:
-            if self.tool.click(self.to_mm(ev.pos()), ev):
+        if self.tool is not None:
+            # Clicking the canvas gives it keyboard focus (Enter / Esc / typing).
+            for v in self.scene().views():
+                v.setFocus()
+            if ev.button() == QtCore.Qt.LeftButton and self.tool.click(self.to_mm(ev.pos()), ev):
+                ev.accept()
+                return
+            if ev.button() == QtCore.Qt.RightButton and self.tool.right_click(self.to_mm(ev.pos()), ev):
                 ev.accept()
                 return
         super().mouseClickEvent(ev)
@@ -126,6 +132,12 @@ class MechanismView(pg.PlotWidget):
         if self.circuit is not None:
             self._draw_static()
             self.autorange()
+
+    def set_mechanism_visible(self, on):
+        for it in ([self.curve, self.toggle_marks, self.ground_marks, self.pins, self.tracer]
+                   + self._link_items + self._block_items + self.other_curves + self.rail_items):
+            it.setVisible(on)
+        self._mech_visible = on
 
     def set_font(self, pt):
         self.pt = pt
@@ -220,6 +232,8 @@ class MechanismView(pg.PlotWidget):
     def show_frame(self, i):
         if self.circuit is None:
             return
+        if not getattr(self, "_mech_visible", True):
+            self.set_mechanism_visible(False)
         p = {k: v[i] for k, v in self.circuit.frames.points.items()}
         for keys, item in zip(self.drawing.links, self._link_items):
             x, y = self._xy(np.array([p[k] for k in keys]))

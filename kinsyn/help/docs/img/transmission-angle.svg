@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="330" viewBox="0 0 700 330">
+<rect x="0" y="0" width="700" height="330" rx="10" fill="#f7f8fa"/>
+<polyline points="41.3,234.2 254.2,234.2" fill="none" stroke="#8a93a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="1.0" stroke-dasharray="8 6"/>
+<polyline points="41.3,234.2 35.7,170.6" fill="none" stroke="#4a5568" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polyline points="35.7,170.6 208.0,115.1" fill="none" stroke="#e08a2c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polyline points="254.2,234.2 208.0,115.1" fill="none" stroke="#4a5568" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polygon points="41.3,234.2 28.3,254.2 54.3,254.2" fill="#8a93a3" fill-opacity="0.35" stroke="#8a93a3" stroke-width="2"/>
+<line x1="25.3" y1="254.2" x2="19.3" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="33.3" y1="254.2" x2="27.3" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="41.3" y1="254.2" x2="35.3" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="49.3" y1="254.2" x2="43.3" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="57.3" y1="254.2" x2="51.3" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<circle cx="41.3" cy="234.2" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<polygon points="254.2,234.2 241.2,254.2 267.2,254.2" fill="#8a93a3" fill-opacity="0.35" stroke="#8a93a3" stroke-width="2"/>
+<line x1="238.2" y1="254.2" x2="232.2" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="246.2" y1="254.2" x2="240.2" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="254.2" y1="254.2" x2="248.2" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="262.2" y1="254.2" x2="256.2" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="270.2" y1="254.2" x2="264.2" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<circle cx="254.2" cy="234.2" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="35.7" cy="170.6" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="208.0" cy="115.1" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<polyline points="175.6,125.5 176.0,126.9 176.5,128.2 177.1,129.5 177.7,130.8 178.4,132.0 179.2,133.3 179.9,134.4 180.8,135.6 181.7,136.7 182.6,137.8 183.6,138.8 184.6,139.8 185.6,140.8 186.7,141.7 187.8,142.6 189.0,143.4 190.2,144.2 191.4,144.9 192.7,145.5 194.0,146.2 195.3,146.7 196.6,147.2 198.0,147.7 199.3,148.1 200.7,148.4 202.1,148.7 203.5,148.9 204.9,149.0 206.4,149.1 207.8,149.2 209.2,149.1 210.6,149.1 212.0,148.9 213.5,148.7 214.9,148.5 216.2,148.2 217.6,147.8 219.0,147.3 220.3,146.9" fill="none" stroke="#2e9e5b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<text x="184.2" y="171.1" fill="#2e9e5b" font-size="18" font-family="sans-serif" text-anchor="middle" font-weight="bold">μ</text>
+<text x="147.7" y="292.2" fill="#2e9e5b" font-size="15" font-family="sans-serif" text-anchor="middle" font-weight="bold">good: μ ≈ 90°</text>
+<polyline points="381.9,234.2 594.8,234.2" fill="none" stroke="#8a93a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="1.0" stroke-dasharray="8 6"/>
+<polyline points="381.9,234.2 324.0,261.2" fill="none" stroke="#4a5568" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polyline points="324.0,261.2 482.4,173.6" fill="none" stroke="#e08a2c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polyline points="594.8,234.2 482.4,173.6" fill="none" stroke="#4a5568" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polygon points="381.9,234.2 368.9,254.2 394.9,254.2" fill="#8a93a3" fill-opacity="0.35" stroke="#8a93a3" stroke-width="2"/>
+<line x1="365.9" y1="254.2" x2="359.9" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="373.9" y1="254.2" x2="367.9" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="381.9" y1="254.2" x2="375.9" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="389.9" y1="254.2" x2="383.9" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="397.9" y1="254.2" x2="391.9" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<circle cx="381.9" cy="234.2" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<polygon points="594.8,234.2 581.8,254.2 607.8,254.2" fill="#8a93a3" fill-opacity="0.35" stroke="#8a93a3" stroke-width="2"/>
+<line x1="578.8" y1="254.2" x2="572.8" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="586.8" y1="254.2" x2="580.8" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="594.8" y1="254.2" x2="588.8" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="602.8" y1="254.2" x2="596.8" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="610.8" y1="254.2" x2="604.8" y2="261.2" stroke="#8a93a3" stroke-width="1.5"/>
+<circle cx="594.8" cy="234.2" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="324.0" cy="261.2" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="482.4" cy="173.6" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<polyline points="452.6,190.1 453.5,191.7 454.6,193.2 455.7,194.7 456.9,196.2 458.2,197.5 459.5,198.8 460.9,200.0 462.4,201.2 464.0,202.2 465.6,203.2 467.2,204.1 468.9,204.9 470.7,205.6 472.4,206.2 474.2,206.7 476.1,207.0 477.9,207.3 479.8,207.5 481.6,207.6 483.5,207.6 485.4,207.5 487.2,207.3 489.1,207.0 490.9,206.6 492.7,206.0 494.5,205.4 496.2,204.7 497.9,203.9 499.5,203.0 501.1,202.0 502.7,201.0 504.1,199.8 505.5,198.6 506.9,197.3 508.1,195.9 509.3,194.4 510.4,192.9 511.4,191.4 512.4,189.7" fill="none" stroke="#d64545" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<text x="482.7" y="234.9" fill="#d64545" font-size="18" font-family="sans-serif" text-anchor="middle" font-weight="bold">μ</text>
+<text x="488.4" y="292.2" fill="#d64545" font-size="15" font-family="sans-serif" text-anchor="middle" font-weight="bold">poor: μ small</text>
+<text x="20" y="318" fill="#8a93a3" font-size="13" font-family="sans-serif" text-anchor="start" font-weight="normal">μ = angle between the coupler (orange) and the output link, measured at B</text>
+</svg>

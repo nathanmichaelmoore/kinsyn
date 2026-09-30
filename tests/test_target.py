@@ -96,3 +96,20 @@ def test_snap_priorities():
     # Angle snap from a reference point.
     r = snap_point(10 + 1j, tol=0.1, ref=0j, angle_step=math.radians(15))
     assert abs(r.point.imag) < 1e-9 and r.kind == "angle"
+
+
+def test_simplify_freehand():
+    from kinsyn.core.target import simplify
+    t = np.linspace(0, np.pi, 400)
+    noisy = 50 * np.exp(1j * t) + np.random.default_rng(0).normal(0, 0.2, 400)
+    s = simplify(noisy, tol=1.0)
+    assert 5 <= len(s) <= 30
+    dense = catmull_rom(s, closed=False, per_segment=20)
+    # The spline through the simplified points stays close to the stroke.
+    assert np.max(np.min(np.abs(dense[:, None] - noisy[None, ::8]), axis=0)) < 2.0
+
+
+def test_point_in_polygon():
+    from kinsyn.core.target import point_in_polygon
+    sq = [0j, 10 + 0j, 10 + 10j, 10j]
+    assert point_in_polygon(5 + 5j, sq) and not point_in_polygon(15 + 5j, sq)

@@ -37,11 +37,14 @@ class TargetDocument(QtCore.QObject):
         super().__init__(parent)
         self.target = Target()
         self.selected = None  # keyframe id
+        self.selected_item = None  # (kind, id, point index) for curves / zones / pivots
         self.undo = QtGui.QUndoStack(self)
         self._merge_serial = 0
 
     def _set(self, target):
         self.target = target
+        if self.selected_item and not self._item_exists(self.selected_item):
+            self.selected_item = None
         if self.selected and self.target.keyframe(self.selected) is None:
             self.selected = None
             self.selectionChanged.emit()
@@ -65,13 +68,38 @@ class TargetDocument(QtCore.QObject):
         """Replace the whole target (new/open project); clears history."""
         self.undo.clear()
         self.selected = None
+        self.selected_item = None
         self._set(target.copy())
         self.selectionChanged.emit()
 
     def select(self, kid):
-        if kid != self.selected:
+        if kid != self.selected or (kid and self.selected_item):
             self.selected = kid
+            if kid:
+                self.selected_item = None
             self.selectionChanged.emit()
+
+    def select_item(self, item):
+        if item != self.selected_item or (item and self.selected):
+            self.selected_item = item
+            if item:
+                self.selected = None
+            self.selectionChanged.emit()
+
+    def _item_exists(self, item):
+        kind, iid, _ = item
+        group = {"curve": self.target.curves, "zone": self.target.zones, "pivot": self.target.pivots}[kind]
+        return any(x.id == iid for x in group)
+
+    def delete_selection(self):
+        """Delete the selected keyframe, or the whole selected curve / zone / pivot."""
+        if self.selected:
+            kid = self.selected
+            self.edit("Delete keyframe", lambda t: t.keyframes.pop(t.index_of(kid)))
+        elif self.selected_item:
+            kind, iid, _ = self.selected_item
+            attr = {"curve": "curves", "zone": "zones", "pivot": "pivots"}[kind]
+            self.edit(f"Delete {kind}", lambda t: setattr(t, attr, [x for x in getattr(t, attr) if x.id != iid]))
 
     def selected_keyframe(self):
         return self.target.keyframe(self.selected) if self.selected else None

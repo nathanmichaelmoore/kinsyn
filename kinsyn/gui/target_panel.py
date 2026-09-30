@@ -10,6 +10,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from kinsyn.core.target import MODES, TIMING_MODES, Keyframe
 from kinsyn.core.units import format_angle, format_length, parse_angle, parse_length
 
+from kinsyn.help.topics import tooltip
+
 from .editor import ValueField
 
 COLS = ["x", "y", "angle", "timing", "t", "tol"]
@@ -29,8 +31,21 @@ class TargetPanel(QtWidgets.QWidget):
         self.mode.addItem("Motion generation (poses: position + angle)", "motion")
         self.mode.addItem("Path generation (points on a path)", "path")
         self.mode.activated.connect(self._on_mode)
+        self.mode.setToolTip(tooltip("synthesis"))
         top.addRow("Synthesis", self.mode)
         lay.addLayout(top)
+        # Until the solvers exist, say plainly what the target is for, so
+        # nobody waits for a mechanism to appear.
+        self.notice = QtWidgets.QLabel(
+            "<b>What this panel does:</b> describe the motion you <i>want</i> (poses, body, timing). "
+            "Generating mechanisms from it is the next milestone: once it lands, a <b>Solve</b> button "
+            "here will list candidate linkages. The mechanism on the canvas is unrelated to your "
+            "poses for now. <a href='help:tutorials/03-define-a-motion.md'>How to use the target editor</a>")
+        self.notice.setWordWrap(True)
+        self.notice.setOpenExternalLinks(False)
+        self.notice.setTextFormat(QtCore.Qt.RichText)
+        self.notice.setStyleSheet("QLabel { border: 1px solid palette(mid); border-radius: 6px; padding: 6px; }")
+        lay.addWidget(self.notice)
         self.hint = QtWidgets.QLabel()
         self.hint.setWordWrap(True)
         self.hint.setTextFormat(QtCore.Qt.RichText)
@@ -98,6 +113,22 @@ class TargetPanel(QtWidgets.QWidget):
             row.addWidget(b)
         lay.addLayout(row)
 
+        # Curves, zones and fixed pivots
+        self.items_list = QtWidgets.QListWidget()
+        self.items_list.setMaximumHeight(110)
+        self.items_list.setToolTip("Curves, pivot zones and fixed pivots. Select one to highlight it on the canvas.")
+        self.items_list.currentRowChanged.connect(self._on_item_row)
+        lay.addWidget(QtWidgets.QLabel("Curves, zones and fixed pivots"))
+        lay.addWidget(self.items_list)
+        irow = QtWidgets.QHBoxLayout()
+        self.toggle_btn = QtWidgets.QPushButton("Open / close curve")
+        self.toggle_btn.clicked.connect(self._toggle_item)
+        del_btn = QtWidgets.QPushButton("Delete")
+        del_btn.clicked.connect(lambda: self.doc.selected_item and self.doc.delete_selection())
+        irow.addWidget(self.toggle_btn)
+        irow.addWidget(del_btn)
+        lay.addLayout(irow)
+
         doc.changed.connect(self.refresh)
         doc.selectionChanged.connect(self.refresh)
         self.refresh()
@@ -146,6 +177,25 @@ class TargetPanel(QtWidgets.QWidget):
                 if c == 3:
                     item.setToolTip("free, abs or rel")
                 self.table.setItem(r, c, item)
+        self._items = ([("curve", c.id, f"Curve: {len(c.points)} points, {'closed' if c.closed else 'open'}")
+                        for c in t.curves]
+                       + [("zone", z.id, f"{'Allowed pivot zone' if z.allow else 'Keep-out zone'}: "
+                                         f"{len(z.polygon)} corners") for z in t.zones]
+                       + [("pivot", f.id, ("Fixed slider axis at " if f.slider_angle is not None else "Fixed pivot at ")
+                           + f"({format_length(f.pos.real, self.unit)}, {format_length(f.pos.imag, self.unit)}) "
+                             f"{self.unit}") for f in t.pivots])
+        self.items_list.blockSignals(True)
+        self.items_list.clear()
+        for _, _, label in self._items:
+            self.items_list.addItem(label)
+        si = self.doc.selected_item
+        rows = [i for i, (k, iid, _) in enumerate(self._items) if si and si[1] == iid]
+        self.items_list.setCurrentRow(rows[0] if rows else -1)
+        self.items_list.blockSignals(False)
+        kind = si[0] if si else None
+        self.toggle_btn.setEnabled(kind in ("curve", "zone"))
+        self.toggle_btn.setText("Allowed / keep-out" if kind == "zone" else "Open / close curve")
+
         sel = t.index_of(self.doc.selected) if self.doc.selected else None
         if sel is None:
             self.table.clearSelection()
@@ -209,6 +259,23 @@ class TargetPanel(QtWidgets.QWidget):
             return
         self.doc.edit("Edit keyframe", fn)
 
+    def _on_item_row(self, row):
+        if 0 <= row < len(self._items):
+            kind, iid, _ = self._items[row]
+            self.doc.select_item((kind, iid, None))
+
+    def _toggle_item(self):
+        si = self.doc.selected_item
+        if not si:
+            return
+        kind, iid, _ = si
+        if kind == "curve":
+            self.doc.edit("Open / close curve", lambda t: [setattr(c, "closed", not c.closed)
+                                                           for c in t.curves if c.id == iid])
+        elif kind == "zone":
+            self.doc.edit("Toggle zone type", lambda t: [setattr(z, "allow", not z.allow)
+                                                         for z in t.zones if z.id == iid])
+
     def _move(self, d):
         k = self.doc.selected_keyframe()
         if k is None:
@@ -223,9 +290,7 @@ class TargetPanel(QtWidgets.QWidget):
         self.doc.edit("Reorder keyframes", fn)
 
     def delete_selected(self):
-        k = self.doc.selected_keyframe()
-        if k is not None:
-            self.doc.edit("Delete keyframe", lambda t: t.keyframes.pop(t.index_of(k.id)))
+        self.doc.delete_selection()
 
     def _clear_body(self):
         if self.doc.target.body is not None:

@@ -20,6 +20,7 @@ include = ["kinsyn*"]
 
 [tool.setuptools.package-data]
 "kinsyn.library" = ["builtin/*.json"]
+"kinsyn.help" = ["docs/*.md", "docs/*/*.md", "docs/img/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

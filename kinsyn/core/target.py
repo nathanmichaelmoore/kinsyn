@@ -258,3 +258,45 @@ class Target:
 
 def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+def simplify(points, tol):
+    """Ramer-Douglas-Peucker: the fewest points that keep the polyline
+    within `tol` of the original. Used to turn a freehand stroke into a few
+    editable spline control points."""
+    P = np.asarray(points, complex)
+    if len(P) < 3:
+        return P.copy()
+    keep = np.zeros(len(P), bool)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(P) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a, b = P[i], P[j]
+        seg = b - a
+        mid = P[i + 1:j]
+        if abs(seg) < 1e-12:
+            d = np.abs(mid - a)
+        else:
+            d = np.abs(((mid - a) * np.conj(seg)).imag) / abs(seg)
+        k = int(np.argmax(d))
+        if d[k] > tol:
+            m = i + 1 + k
+            keep[m] = True
+            stack += [(i, m), (m, j)]
+    return P[keep]
+
+
+def point_in_polygon(p, polygon):
+    """Even-odd rule test for a point inside a polygon (list of complex)."""
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        if (a.imag > p.imag) != (b.imag > p.imag):
+            x = a.real + (p.imag - a.imag) * (b.real - a.real) / (b.imag - a.imag)
+            if p.real < x:
+                inside = not inside
+    return inside

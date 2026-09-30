@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300">
+<rect x="0" y="0" width="640" height="300" rx="10" fill="#f7f8fa"/>
+<polyline points="74.5,136.4 565.5,136.4" fill="none" stroke="#8a93a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="1.0" stroke-dasharray="8 6"/>
+<text x="565.5" y="128.4" fill="#8a93a3" font-size="15" font-family="sans-serif" text-anchor="end" font-weight="normal">slider axis</text>
+<polyline points="170.0,190.9 216.9,123.9" fill="none" stroke="#4a5568" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="1.0"/>
+<polygon points="216.9,123.9 489.4,136.4 355.6,75.6" fill="#e08a2c" fill-opacity="0.18" stroke="#e08a2c" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="464.8,152.7 513.9,152.7 513.9,120.0 464.8,120.0" fill="#4a5568" fill-opacity="0.25" stroke="#4a5568" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="170.0,190.9 157.0,210.9 183.0,210.9" fill="#8a93a3" fill-opacity="0.35" stroke="#8a93a3" stroke-width="2"/>
+<line x1="154.0" y1="210.9" x2="148.0" y2="217.9" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="162.0" y1="210.9" x2="156.0" y2="217.9" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="170.0" y1="210.9" x2="164.0" y2="217.9" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="178.0" y1="210.9" x2="172.0" y2="217.9" stroke="#8a93a3" stroke-width="1.5"/>
+<line x1="186.0" y1="210.9" x2="180.0" y2="217.9" stroke="#8a93a3" stroke-width="1.5"/>
+<circle cx="170.0" cy="190.9" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="216.9" cy="123.9" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="489.4" cy="136.4" r="6" fill="#f7f8fa" stroke="#2b3340" stroke-width="2.5"/>
+<circle cx="355.6" cy="75.6" r="6" fill="#2f8fd8"/>
+<polyline points="170.0,190.9 170.0,136.4" fill="none" stroke="#d64545" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="1.0" stroke-dasharray="3 3"/>
+<text x="158.0" y="163.6" fill="#d64545" font-size="15" font-family="sans-serif" text-anchor="middle" font-weight="bold">e</text>
+<text x="207.5" y="167.4" fill="#2b3340" font-size="15" font-family="sans-serif" text-anchor="start" font-weight="normal">crank a</text>
+<text x="353.1" y="118.1" fill="#e08a2c" font-size="15" font-family="sans-serif" text-anchor="middle" font-weight="normal">coupler b</text>
+<text x="489.4" y="166.4" fill="#2b3340" font-size="15" font-family="sans-serif" text-anchor="middle" font-weight="normal">slider</text>
+<text x="20" y="290" fill="#8a93a3" font-size="13" font-family="sans-serif" text-anchor="start" font-weight="normal">e = offset of the slider axis from the crank pivot (0 = in-line)</text>
+</svg>

@@ -18,12 +18,16 @@ from pathlib import Path
 
 from kinsyn.core.project import Project, load_project, save_project
 
+from kinsyn.help.topics import TERMS, tooltip
+
 from . import crashlog
 from .document import TargetDocument
 from .target_layer import TargetLayer
 from .target_panel import TargetPanel
 from .timeline import Timeline
-from .tools import BodyTool, EditorContext, PoseTool, SelectTool
+from .underlays import AlignTool, CalibrateTool, LayersPanel, PickTool, Underlay, UnderlayManager
+from .tools import (BodyTool, CurveTool, EditorContext, MeasureTool, PivotTool, PolylineTool, PoseTool,
+                    SelectTool, ZoneTool)
 from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
@@ -33,7 +37,7 @@ from .view import MechanismView
 SPEEDS = [("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)]
 N_SAMPLES = 720
 CYCLE_SECONDS = 4.0  # one circuit at 1x speed
-LAYOUT_VERSION = 2  # bump when docks are added/removed so stale layouts are ignored
+LAYOUT_VERSION = 3  # bump when docks are added/removed so stale layouts are ignored
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -87,6 +91,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(QtCore.Qt.RichText)
         self.summary.setAlignment(QtCore.Qt.AlignTop)
+        self.summary.setOpenExternalLinks(False)
+        self.summary.linkActivated.connect(self.open_help_link)
         rl.addWidget(self.summary, 1)
         save = QtWidgets.QPushButton("Save to library…")
         save.clicked.connect(self.save_to_library)
@@ -102,6 +108,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.doc = TargetDocument(self)
         self.layer = TargetLayer(self.view, self.doc)
         self.target_panel = TargetPanel(self.doc)
+        self.target_panel.notice.linkActivated.connect(self.open_help_link)
         tscroll = QtWidgets.QScrollArea()
         tscroll.setWidget(self.target_panel)
         tscroll.setWidgetResizable(True)
@@ -110,6 +117,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabifyDockWidget(mech_dock, self.target_dock)
         mech_dock.raise_()
         self.project_path = None
+        self._extra_dirty = False  # project changes outside the undo stack (underlays, mechanism)
+        self.underlays = UnderlayManager(self.view)
+        self.layers_panel = LayersPanel(self, self.underlays)
+        self.layers_dock = self._dock("Layers", self.layers_panel, QtCore.Qt.LeftDockWidgetArea)
+        self.tabifyDockWidget(lib_dock, self.layers_dock)
+        lib_dock.raise_()
         self.doc.undo.cleanChanged.connect(lambda _: self._update_title())
         self.doc.changed.connect(lambda: crashlog.breadcrumb(
             f"target edit: {self.doc.undo.undoText() or 'reset'}"))
@@ -122,6 +135,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bl.addLayout(self._build_playback())
         self.plots = CircuitPlots(self.settings.get_raw("plots/panels"))
         self.plots.scrubbed.connect(self.seek)
+        self.plots.helpRequested.connect(lambda key: self.open_help_link(f"help:{key}"))
         self.plots.panelsChanged.connect(lambda keys: self.settings.set_raw("plots/panels", keys))
         bl.addWidget(self.plots)
         motion_dock = self._dock("Motion", bottom, QtCore.Qt.BottomDockWidgetArea)
@@ -143,6 +157,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.set_units(self.unit)
         self.view.set_units(self.unit)
         self.target_panel.set_units(self.unit)
+        self.layers_panel.set_units(self.unit)
         self._apply_fonts()
         geo, state = self.settings.get_raw("window/geometry"), self.settings.get_raw("window/state")
         if geo is not None:
@@ -155,6 +170,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.set_mechanism(self.mech)
         self.recompute(autorange=True)
         self.timer.start()
+        QtCore.QTimer.singleShot(800, self._first_run_tip)
 
     # --- construction ----------------------------------------------------
     def _dock(self, title, widget, area):
@@ -171,7 +187,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_tools(self):
         self.ctx = EditorContext(self)
         self.tools = {"select": SelectTool(self.ctx), "pose": PoseTool(self.ctx, True),
-                      "point": PoseTool(self.ctx, False), "body": BodyTool(self.ctx)}
+                      "point": PoseTool(self.ctx, False), "body": BodyTool(self.ctx), "curve": CurveTool(self.ctx),
+                      "zone": ZoneTool(self.ctx), "pivot": PivotTool(self.ctx), "measure": MeasureTool(self.ctx),
+                      "calibrate": CalibrateTool(self.ctx, self.underlays), "align": AlignTool(self.ctx, self.underlays),
+                      "pick": PickTool(self.ctx, self.underlays)}
         tb = QtWidgets.QToolBar("Tools")
         tb.setObjectName("Tools")
         tb.setMovable(False)
@@ -183,13 +202,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 ("select", "Select", "V", "Select, move and rotate keyframes"),
                 ("pose", "Pose", "P", "Place poses (click) and aim them (drag)"),
                 ("point", "Point", "O", "Place path points"),
-                ("body", "Body", "B", "Draw the outline of the moving part")):
+                ("body", "Body", "B", "Draw the outline of the moving part"),
+                ("curve", "Curve", "C", "Sketch a target path (drag freehand or click points)"),
+                ("zone", "Zone", "Z", "Region where ground pivots are allowed (Ctrl: keep-out)"),
+                ("pivot", "Pivot", "G", "Fix a ground pivot (click) or slider axis (drag)"),
+                ("measure", "Measure", "M", "Measure distance and angle")):
             a = QtGui.QAction(label, self, checkable=True, shortcut=key)
             a.setToolTip(f"{tip} ({key})")
             a.triggered.connect(lambda _, n=name: self.set_tool(n))
             group.addAction(a)
             tb.addAction(a)
             self.tool_actions[name] = a
+        tb.addSeparator()
+        self.finish_action = QtGui.QAction("✓ Finish", self, triggered=lambda: self.tool.finish())
+        self.finish_action.setToolTip("Finish the shape you are drawing (Enter / right-click / double-click)")
+        self.cancel_action = QtGui.QAction("✗ Cancel", self, triggered=lambda: self.tool.cancel())
+        self.cancel_action.setToolTip("Discard the shape you are drawing (Esc)")
+        tb.addAction(self.finish_action)
+        tb.addAction(self.cancel_action)
         tb.addSeparator()
         self.snap_action = QtGui.QAction("Snap", self, checkable=True, checked=True, shortcut="S")
         self.snap_action.setToolTip("Snapping to grid, points and alignment (S). Hold Alt to suppress, "
@@ -210,13 +240,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tool = None
         self.set_tool("select")
 
+    def update_drawing_actions(self):
+        drawing = isinstance(self.tool, PolylineTool) and self.tool.drawing
+        self.finish_action.setEnabled(drawing)
+        self.cancel_action.setEnabled(drawing)
+
     def set_tool(self, name):
+        if name in ("calibrate", "align", "pick") and self.underlays.selected is None:
+            self.statusBar().showMessage("Add an underlay first (Layers tab)", 4000)
+            return
         if self.tool is not None:
             self.tool.deactivate()
         self.tool = self.tools[name]
         self.view.edit_vb.tool = self.tool
-        self.tool_actions[name].setChecked(True)
+        if name in self.tool_actions:
+            self.tool_actions[name].setChecked(True)
+        else:
+            for a in self.tool_actions.values():
+                a.setChecked(False)
         self.tool.activate()
+        self.update_drawing_actions()
         if name in ("pose", "point") and self.doc.target.mode != ("motion" if name == "pose" else "path"):
             mode = "motion" if name == "pose" else "path"
             self.doc.edit("Change synthesis mode", lambda t: setattr(t, "mode", mode))
@@ -255,18 +298,27 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_tool("select")
 
     def mechanism_snap_points(self):
-        if self.circuit is None:
-            return []
-        return [self.circuit.frames.points[k][0] for k in self.mech.drawing().ground]
+        pts = self.underlays.snap_points()
+        if self.circuit is not None and self.show_mech_action.isChecked():
+            pts += [self.circuit.frames.points[k][0] for k in self.mech.drawing().ground]
+        return pts
+
+    def mark_dirty(self):
+        self._extra_dirty = True
+        self._update_title()
 
     # --- project files ---------------------------------------------------
     def _update_title(self):
         name = Path(self.project_path).name if self.project_path else "Untitled"
-        dirty = "" if self.doc.undo.isClean() else " *"
+        try:
+            clean = self.doc.undo.isClean()
+        except RuntimeError:  # undo stack already destroyed during shutdown
+            return
+        dirty = "" if clean and not self._extra_dirty else " *"
         self.setWindowTitle(f"{name}{dirty} – kinsyn")
 
     def _maybe_save(self):
-        if self.doc.undo.isClean():
+        if self.doc.undo.isClean() and not self._extra_dirty:
             return True
         r = QtWidgets.QMessageBox.question(
             self, "Unsaved changes", "Save changes to the project first?",
@@ -280,7 +332,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         from kinsyn.core.target import Target
         self.doc.reset(Target())
+        self.underlays.clear()
         self.project_path = None
+        self._extra_dirty = False
         self._update_title()
 
     def open_project(self, path=None):
@@ -303,7 +357,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.baseline = (self.mech, self.operating)
             self.editor.set_mechanism(self.mech)
         self.unit_combo.setCurrentText(proj.units)
+        self.underlays.clear()
+        missing = []
+        for d in proj.underlays:
+            u = self.underlays.add(Underlay.from_dict(d), select=False)
+            if u.missing:
+                missing.append(u.path)
+        self.underlays.selected = self.underlays.underlays[0] if self.underlays.underlays else None
+        self.underlays.changed.emit()
+        if missing:
+            QtWidgets.QMessageBox.warning(self, "Open project", "These underlay files could not be found:\n"
+                                          + "\n".join(missing))
         self.project_path = path
+        self._extra_dirty = False
         self.doc.undo.setClean()
         self._update_title()
         self.recompute(autorange=True)
@@ -318,7 +384,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not path.endswith(".kinsyn"):
                 path += ".kinsyn"
         proj = Project(target=self.doc.target, mechanism=self.mech, operating_range=self.operating,
-                       units=self.unit)
+                       units=self.unit, underlays=self.underlays.to_dicts())
         try:
             save_project(proj, path)
         except OSError as exc:
@@ -327,6 +393,7 @@ class MainWindow(QtWidgets.QMainWindow):
         crashlog.breadcrumb(f"save project {path}")
         self.project_path = path
         self.doc.undo.setClean()
+        self._extra_dirty = False
         self._update_title()
         self.statusBar().showMessage(f"Saved {path}", 3000)
         return True
@@ -349,11 +416,26 @@ class MainWindow(QtWidgets.QMainWindow):
         redo.setShortcut(QtGui.QKeySequence.Redo)
         e.addAction(undo)
         e.addAction(redo)
-        e.addAction(QtGui.QAction("Delete keyframe", self, shortcut="Delete",
-                                  triggered=self.target_panel.delete_selected))
+        e.addAction(QtGui.QAction("Delete selected", self, shortcut="Delete",
+                                  triggered=self.doc.delete_selection))
         e.addSeparator()
         e.addAction(QtGui.QAction("Reset mechanism", self, shortcut="Ctrl+R", triggered=self.reset_mechanism))
         e.addAction(QtGui.QAction("Preferences…", self, shortcut="Ctrl+,", triggered=self.show_preferences))
+        h = self.menuBar().addMenu("&Help")
+        h.addAction(QtGui.QAction("Help contents", self, shortcut="F1", triggered=lambda: self.show_help("index.md")))
+        h.addAction(QtGui.QAction("Tour of the window", self,
+                                  triggered=lambda: self.show_help("tutorials/01-tour.md")))
+        h.addAction(QtGui.QAction("Tutorial: explore a template", self,
+                                  triggered=lambda: self.show_help("tutorials/02-explore-a-template.md")))
+        h.addAction(QtGui.QAction("Tutorial: define a motion (poses, body, snapping)", self,
+                                  triggered=lambda: self.show_help("tutorials/03-define-a-motion.md")))
+        h.addSeparator()
+        h.addAction(QtGui.QAction("Concepts: anatomy of a four-bar", self,
+                                  triggered=lambda: self.show_help("concepts/fourbar-anatomy.md")))
+        h.addAction(QtGui.QAction("Tools and shortcuts", self,
+                                  triggered=lambda: self.show_help("reference/tools-and-shortcuts.md")))
+        h.addSeparator()
+        h.addAction(QtGui.QAction("About kinsyn", self, triggered=self.show_about))
         v = self.menuBar().addMenu("&View")
         v.addAction(QtGui.QAction("Larger text", self, shortcuts=["Ctrl+=", "Ctrl++"],
                                   triggered=lambda: self.change_text_size(+0.5)))
@@ -362,6 +444,10 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addAction(QtGui.QAction("Default text size", self, shortcut="Ctrl+0",
                                   triggered=lambda: self.change_text_size(None)))
         v.addSeparator()
+        self.show_mech_action = QtGui.QAction("Show mechanism", self, checkable=True, checked=True,
+                                              toggled=self.view.set_mechanism_visible)
+        self.show_mech_action.setToolTip("Hide the mechanism while you set up the target motion")
+        v.addAction(self.show_mech_action)
         self.unlock_action = QtGui.QAction("Unlock panel layout", self, checkable=True,
                                            toggled=self.set_layout_unlocked)
         self.unlock_action.setToolTip("Allow panels to be dragged and undocked (can be unstable on Wayland)")
@@ -374,9 +460,11 @@ class MainWindow(QtWidgets.QMainWindow):
         box = QtWidgets.QGroupBox("Motion")
         form = QtWidgets.QFormLayout(box)
         self.circuit_combo = QtWidgets.QComboBox()
+        self.circuit_combo.setToolTip(tooltip("circuit"))
         self.circuit_combo.activated.connect(self.on_circuit)
         form.addRow("Circuit", self.circuit_combo)
         self.limit_check = QtWidgets.QCheckBox("Limit input to an operating range")
+        self.limit_check.setToolTip(tooltip("operating-range"))
         self.limit_check.toggled.connect(self.on_limit_toggled)
         form.addRow(self.limit_check)
         row = QtWidgets.QWidget()
@@ -620,7 +708,16 @@ class MainWindow(QtWidgets.QMainWindow):
             val = (f"{format_angle(s.over_center, 2)}°" if self.mech.input_kind == "angle"
                    else f"{format_length(s.over_center, self.unit)} {self.unit}")
             rows.append(("Over-center", f"<span style='color:#66bb6a'>{val} past toggle</span>"))
-        table = "".join(f"<tr><td style='color:#8a93a3;padding-right:10px'>{k}</td><td>{v}</td></tr>"
+        terms = {"Class": "grashof", "Input": "grashof", "Output travel": "output-link",
+                 "Output": "output-link", "Transmission angle": "transmission-angle", "Time ratio": "time-ratio",
+                 "Toggle positions": "toggle", "Over-center": "over-center"}
+
+        def key_cell(k):
+            if k in terms:
+                return (f"<a href='help:{terms[k]}' style='color:#8a93a3; text-decoration:none'>{k}</a>"
+                        f"<a href='help:{terms[k]}' style='color:#6c9fd8; text-decoration:none'> ⓘ</a>")
+            return k
+        table = "".join(f"<tr><td style='color:#8a93a3;padding-right:10px'>{key_cell(k)}</td><td>{v}</td></tr>"
                         for k, v in rows)
         notes = "".join(f"<li>{html.escape(n)}</li>" for n in s.notes)
         warns = "".join(f"<li style='color:#ef5350'>{html.escape(w)}</li>" for w in s.warnings)
@@ -675,6 +772,31 @@ class MainWindow(QtWidgets.QMainWindow):
         mu_txt = f"{math.degrees(mu):5.1f}°" if np.isfinite(mu) else "  n/a "
         ma_txt = f"{ma:8.2f}" if np.isfinite(ma) and ma < 1e4 else "       ∞"
         return f"input {val(q, in_kind)}  output {val(out, out_kind)}  μ {mu_txt}  MA {ma_txt}"
+
+    # --- help --------------------------------------------------------------
+    def show_help(self, path="index.md"):
+        if getattr(self, "help_window", None) is None:
+            from kinsyn.help.window import HelpWindow
+            self.help_window = HelpWindow(self)
+        crashlog.breadcrumb(f"help {path}")
+        self.help_window.open(path)
+
+    def open_help_link(self, link):
+        """Handle 'help:<term key or doc path>' links from labels."""
+        key = link.removeprefix("help:")
+        self.show_help(TERMS[key][2] if key in TERMS else key)
+
+    def show_about(self):
+        QtWidgets.QMessageBox.about(
+            self, "About kinsyn",
+            "<b>kinsyn</b>: planar kinematic synthesis.<br>Design four-bar and slider linkages from the "
+            "motion you need.<br><br>Press F1 for tutorials, concepts and reference.")
+
+    def _first_run_tip(self):
+        if not self.settings.get_raw("ui/seen_help_tip"):
+            self.statusBar().showMessage("New to linkages? Press F1 for tutorials and plain-language "
+                                         "explanations of every term.", 15000)
+            self.settings.set_raw("ui/seen_help_tip", True)
 
     # --- preferences ---------------------------------------------------
     def _apply_fonts(self):
@@ -736,6 +858,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.set_units(unit)
         self.view.set_units(unit)
         self.target_panel.set_units(unit)
+        self.layers_panel.set_units(unit)
+        self.underlays.rebuild_all()
         self.layer.redraw()
         self.recompute()
 

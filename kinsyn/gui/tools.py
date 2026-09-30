@@ -10,7 +10,7 @@ import numpy as np
 from PySide6 import QtCore, QtWidgets
 
 from kinsyn.core.snap import SnapResult, nice_step, snap_point
-from kinsyn.core.target import Body, Keyframe, pose_inverse
+from kinsyn.core.target import Body, Curve, FixedPivot, Keyframe, Zone, pose_inverse, resample_even, simplify
 from kinsyn.core.units import parse_angle, parse_length
 
 ANGLE_STEP = math.radians(15)
@@ -117,6 +117,9 @@ class Tool:
     def click(self, p, ev):
         return False
 
+    def right_click(self, p, ev):
+        return False
+
     def drag_start(self, p, ev):
         return False
 
@@ -141,28 +144,45 @@ class SelectTool(Tool):
         super().__init__(ctx)
         self.drag = None
 
+    def _hit(self, p):
+        return self.ctx.layer.hit(p) or self.ctx.layer.hit_items(p)
+
     def hover(self, p):
-        hit = self.ctx.layer.hit(p)
         view = self.ctx.w.view
-        view.setCursor(QtCore.Qt.PointingHandCursor if hit else QtCore.Qt.ArrowCursor)
+        view.setCursor(QtCore.Qt.PointingHandCursor if self._hit(p) else QtCore.Qt.ArrowCursor)
+
+    def _select(self, hit):
+        doc = self.ctx.doc
+        if hit is None:
+            doc.select(None)
+            doc.select_item(None)
+        elif hit[0] in ("pos", "rot"):
+            doc.select(hit[1])
+        else:
+            doc.select_item(hit)
 
     def click(self, p, ev):
-        hit = self.ctx.layer.hit(p)
-        self.ctx.doc.select(hit[1] if hit else None)
+        self._select(self._hit(p))
         return True
 
     def drag_start(self, p, ev):
-        hit = self.ctx.layer.hit(p)
+        hit = self._hit(p)
         if not hit:
             return False  # let the view pan
-        self.ctx.doc.select(hit[1])
-        self.drag = (hit[0], hit[1], self.ctx.doc.new_merge_key())
+        self._select(hit)
+        self.drag = (hit, self.ctx.doc.new_merge_key())
         return True
 
     def drag_move(self, p, ev):
         if not self.drag:
             return
-        what, kid, key = self.drag
+        hit, key = self.drag
+        what, kid = hit[0], hit[1]
+        if what in ("curve", "zone", "pivot"):
+            r = self.ctx.snap(p)
+            self.ctx.layer.show_snap(r)
+            self.ctx.doc.edit("Move point", lambda t: move_item_point(t, hit, r.point), key)
+            return
         k = self.ctx.doc.target.keyframe(kid)
         if what == "pos":
             r = self.ctx.snap(p, exclude=kid)
@@ -177,6 +197,11 @@ class SelectTool(Tool):
         self.ctx.layer.clear_feedback()
 
     def text(self, s):
+        item = self.ctx.doc.selected_item
+        if item is not None and item[0] in ("curve", "zone", "pivot") and (item[2] is not None or item[0] == "pivot"):
+            pos, _ = parse_coords(s, self.ctx.unit)
+            self.ctx.doc.edit("Move point", lambda t: move_item_point(t, item, pos))
+            return True
         k = self.ctx.doc.selected_keyframe()
         if k is None:
             raise ValueError("select a keyframe first")
@@ -189,6 +214,19 @@ class SelectTool(Tool):
                 kk.angle = ang
         self.ctx.doc.edit("Move keyframe", fn)
         return True
+
+
+def move_item_point(t, hit, pos):
+    """Move a curve control point, zone corner or fixed pivot."""
+    kind, iid, idx = hit
+    if kind == "curve":
+        c = next(c for c in t.curves if c.id == iid)
+        c.points[idx] = pos
+    elif kind == "zone":
+        z = next(z for z in t.zones if z.id == iid)
+        z.polygon[idx] = pos
+    elif kind == "pivot":
+        next(f for f in t.pivots if f.id == iid).pos = pos
 
 
 class PoseTool(Tool):
@@ -249,26 +287,59 @@ class PoseTool(Tool):
         return True
 
 
-class BodyTool(Tool):
-    """Click the outline of the moving part; double-click or Enter to
-    finish, Backspace to remove the last point, Esc to cancel."""
+class PolylineTool(Tool):
+    """Click points one by one. Finish by clicking the first point again
+    (closes the shape), double-click, right-click, Enter, or the Finish
+    button; Backspace removes the last point; Esc cancels."""
 
-    name = "body"
-    prompt = "Body: click outline points of the moving part · double-click / Enter to finish · Backspace undoes a point · Esc cancels"
+    min_points = 2
+    noun = "shape"
+    default_closed = True  # finishing with Enter etc. closes shapes of 3+ points
     cursor = QtCore.Qt.CrossCursor
 
     def __init__(self, ctx):
         super().__init__(ctx)
         self.pts = []
 
+    @property
+    def drawing(self):
+        return bool(self.pts)
+
+    def _prompt(self):
+        n = len(self.pts)
+        if not n:
+            return self.prompt
+        how = "click the first point to close · double-click, right-click or Enter to finish"
+        return f"{self.noun.capitalize()}: {n} point{'s' if n != 1 else ''} · {how} · Backspace undoes a point · Esc cancels"
+
+    def _changed(self):
+        self.ctx.set_prompt(self._prompt())
+        self.ctx.w.update_drawing_actions()
+        if self.pts:
+            self.ctx.layer.show_preview(line=self.pts, points=self.pts)
+        else:
+            self.ctx.layer.clear_feedback()
+
+    def activate(self):
+        super().activate()
+        self._changed()
+
     def deactivate(self):
         self.pts = []
         super().deactivate()
+        self.ctx.w.update_drawing_actions()
 
     def _ref(self):
         return self.pts[-1] if self.pts else None
 
+    def _near_first(self, p):
+        return len(self.pts) >= 3 and abs(p - self.pts[0]) <= SNAP_PX * self.ctx.layer.mm_per_px()
+
     def hover(self, p):
+        if self._near_first(p):
+            self.ctx.layer.show_snap(SnapResult(self.pts[0], "object", label="close"))
+            self.ctx.layer.show_preview(line=self.pts + [self.pts[0]], points=self.pts)
+            return
         r = self.ctx.snap(p, ref=self._ref())
         self.ctx.layer.show_snap(r)
         if self.pts:
@@ -278,19 +349,27 @@ class BodyTool(Tool):
         if ev is not None and ev.double():
             self.finish()
             return True
+        if self._near_first(p):
+            self.finish(closed=True)
+            return True
         self.pts.append(self.ctx.snap(p, ref=self._ref()).point)
-        self.ctx.layer.show_preview(line=self.pts, points=self.pts)
+        self._changed()
         return True
+
+    def right_click(self, p, ev):
+        if self.pts:
+            self.finish()
+            return True
+        return False
 
     def key(self, key):
         if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             self.finish()
-        elif key == QtCore.Qt.Key_Escape:
-            self.pts = []
-            self.ctx.layer.clear_feedback()
+        elif key == QtCore.Qt.Key_Escape and self.pts:
+            self.cancel()
         elif key == QtCore.Qt.Key_Backspace and self.pts:
             self.pts.pop()
-            self.ctx.layer.show_preview(line=self.pts, points=self.pts)
+            self._changed()
         else:
             return False
         return True
@@ -299,20 +378,37 @@ class BodyTool(Tool):
         last = (self.pts[-1], 0.0) if self.pts else None
         pos, _ = parse_coords(s, self.ctx.unit, last)
         self.pts.append(pos)
-        self.ctx.layer.show_preview(line=self.pts, points=self.pts)
+        self._changed()
         return True
 
-    def finish(self):
-        # Drop a duplicate final point (from the double-click's first click).
+    def cancel(self):
+        self.pts = []
+        self._changed()
+
+    def finish(self, closed=None):
         pts = list(self.pts)
+        # Drop a duplicate final point (from the double-click's first click).
         if len(pts) >= 2 and abs(pts[-1] - pts[-2]) < 1e-9:
             pts.pop()
         self.pts = []
-        self.ctx.layer.clear_feedback()
-        if len(pts) < 2:
+        self._changed()
+        if len(pts) < self.min_points:
+            self.ctx.w.statusBar().showMessage(f"A {self.noun} needs at least {self.min_points} points", 3000)
             return
-        closed = len(pts) >= 3
+        if closed is None:
+            closed = self.default_closed and len(pts) >= 3
+        self.commit(pts, closed)
 
+    def commit(self, pts, closed):
+        raise NotImplementedError
+
+
+class BodyTool(PolylineTool):
+    name = "body"
+    noun = "body outline"
+    prompt = "Body: click around the outline of the moving part · finish with Enter, right-click, double-click or by clicking the first point"
+
+    def commit(self, pts, closed):
         def fn(t):
             if t.keyframes:
                 ref = t.keyframes[0]
@@ -322,3 +418,145 @@ class BodyTool(Tool):
                 t.keyframes.append(ref)
             t.body = Body([list(pose_inverse(pts, ref.pos, ref.angle))], closed=closed)
         self.ctx.doc.edit("Set body outline", fn)
+
+
+class CurveTool(PolylineTool):
+    """Click spline points, or press-drag to sketch freehand (smoothed into a
+    few editable points). A curve closes if you finish on its first point."""
+
+    name = "curve"
+    noun = "curve"
+    default_closed = False
+    prompt = ("Curve: drag to sketch freehand, or click points · finish with Enter, right-click or double-click · "
+              "click the first point to close it")
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.stroke = None
+
+    def drag_start(self, p, ev):
+        if self.pts:
+            return False  # already clicking points: let the view pan
+        self.stroke = [self.ctx.snap(p).point]
+        return True
+
+    def drag_move(self, p, ev):
+        self.stroke.append(p)
+        self.ctx.layer.show_preview(line=self.stroke)
+
+    def drag_end(self, p, ev):
+        stroke, self.stroke = self.stroke + [p], None
+        self.ctx.layer.clear_feedback()
+        mpp = self.ctx.layer.mm_per_px()
+        if len(stroke) < 3 or sum(abs(b - a) for a, b in zip(stroke, stroke[1:])) < 20 * mpp:
+            return
+        closed = abs(stroke[-1] - stroke[0]) < 15 * mpp
+        pts = list(simplify(resample_even(stroke, 200), 3 * mpp))
+        if closed and len(pts) > 3:
+            pts = pts[:-1]
+        self.commit(pts, closed and len(pts) >= 3)
+
+    def commit(self, pts, closed):
+        c = Curve(points=list(pts), closed=closed)
+        self.ctx.doc.edit("Add curve", lambda t: t.curves.append(c))
+        self.ctx.doc.select_item(("curve", c.id, None))
+        if self.ctx.doc.target.mode != "path":
+            self.ctx.doc.edit("Change synthesis mode", lambda t: setattr(t, "mode", "path"))
+
+
+class ZoneTool(PolylineTool):
+    name = "zone"
+    noun = "pivot zone"
+    min_points = 3
+    prompt = ("Zone: click the corners of a region where ground pivots are allowed (hold Ctrl on the last click "
+              "for a keep-out zone) · finish with Enter, right-click, double-click or the first point")
+
+    def commit(self, pts, closed):
+        allow = not (self.ctx.modifiers() & QtCore.Qt.ControlModifier)
+        z = Zone(polygon=list(pts), allow=allow)
+        self.ctx.doc.edit("Add pivot zone" if allow else "Add keep-out zone", lambda t: t.zones.append(z))
+        self.ctx.doc.select_item(("zone", z.id, None))
+
+
+class PivotTool(Tool):
+    name = "pivot"
+    prompt = ("Fixed pivot: click where a ground pivot must be · press-drag to fix a slider axis instead "
+              "(Shift: 15° steps) · or type x, y")
+    cursor = QtCore.Qt.CrossCursor
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.anchor = None
+
+    def _commit(self, pos, slider_angle=None):
+        fp = FixedPivot(pos=pos, slider_angle=slider_angle)
+        self.ctx.doc.edit("Add fixed slider axis" if slider_angle is not None else "Add fixed pivot",
+                          lambda t: t.pivots.append(fp))
+        self.ctx.doc.select_item(("pivot", fp.id, None))
+
+    def click(self, p, ev):
+        self._commit(self.ctx.snap(p).point)
+        return True
+
+    def drag_start(self, p, ev):
+        self.anchor = self.ctx.snap(p).point
+        return True
+
+    def drag_move(self, p, ev):
+        ang = self.ctx.snap_angle(cmath.phase(p - self.anchor)) if p != self.anchor else 0.0
+        tip = self.anchor + abs(p - self.anchor) * cmath.exp(1j * ang)
+        self.ctx.layer.show_preview(line=[2 * self.anchor - tip, tip], points=[self.anchor])
+
+    def drag_end(self, p, ev):
+        self.ctx.layer.clear_feedback()
+        if abs(p - self.anchor) < DRAG_ANGLE_MIN_PX * self.ctx.layer.mm_per_px():
+            self._commit(self.anchor)
+        else:
+            self._commit(self.anchor, self.ctx.snap_angle(cmath.phase(p - self.anchor)) % math.pi)
+
+    def text(self, s):
+        pos, _ = parse_coords(s, self.ctx.unit)
+        self._commit(pos)
+        return True
+
+
+class MeasureTool(Tool):
+    name = "measure"
+    prompt = "Measure: click two points to see the distance and angle between them (snapping applies)"
+    cursor = QtCore.Qt.CrossCursor
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.a = None
+        self.b = None
+
+    def deactivate(self):
+        self.a = self.b = None
+        self.ctx.layer.show_measure(None)
+        super().deactivate()
+
+    def _show(self, a, b):
+        from kinsyn.core.units import format_angle, format_length
+        d = abs(b - a)
+        ang = cmath.phase(b - a) if d else 0.0
+        u = self.ctx.unit
+        txt = (f"{format_length(d, u)} {u}  ∠{format_angle(ang, 1)}°  "
+               f"(Δx {format_length((b - a).real, u)}, Δy {format_length((b - a).imag, u)})")
+        self.ctx.layer.show_measure((a, b), txt)
+        self.ctx.set_prompt(f"Measure: {txt}")
+
+    def hover(self, p):
+        r = self.ctx.snap(p, ref=self.a if self.b is None else None)
+        self.ctx.layer.show_snap(r)
+        if self.a is not None and self.b is None:
+            self._show(self.a, r.point)
+
+    def click(self, p, ev):
+        q = self.ctx.snap(p, ref=self.a if self.b is None else None).point
+        if self.a is None or self.b is not None:
+            self.a, self.b = q, None
+            self.ctx.layer.show_measure(None)
+        else:
+            self.b = q
+            self._show(self.a, self.b)
+        return True
