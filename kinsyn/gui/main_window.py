@@ -14,6 +14,7 @@ from kinsyn.core.mechanism import REGISTRY
 from kinsyn.core.units import LENGTH_UNITS, format_angle, format_length
 from kinsyn.library.catalog import Entry, save_user_entry
 
+from . import crashlog
 from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
@@ -129,8 +130,11 @@ class MainWindow(QtWidgets.QMainWindow):
         dock = QtWidgets.QDockWidget(title, self)
         dock.setObjectName(title)
         dock.setWidget(widget)
-        dock.setFeatures(QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable)
+        # Panels start locked: dragging dock widgets goes through Qt's
+        # drag-and-drop loop, which crashed (double free) on Wayland.
+        dock.setFeatures(QtWidgets.QDockWidget.NoDockWidgetFeatures)
         self.addDockWidget(area, dock)
+        self._docks = getattr(self, "_docks", []) + [dock]
         return dock
 
     def _build_menu(self):
@@ -148,6 +152,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                   triggered=lambda: self.change_text_size(-0.5)))
         v.addAction(QtGui.QAction("Default text size", self, shortcut="Ctrl+0",
                                   triggered=lambda: self.change_text_size(None)))
+        v.addSeparator()
+        self.unlock_action = QtGui.QAction("Unlock panel layout", self, checkable=True,
+                                           toggled=self.set_layout_unlocked)
+        self.unlock_action.setToolTip("Allow panels to be dragged and undocked (can be unstable on Wayland)")
+        v.addAction(self.unlock_action)
         v.addSeparator()
         v.addAction(QtGui.QAction("Fit to window", self, shortcut="F", triggered=self.view.autorange))
         v.addAction(QtGui.QAction("Play / pause", self, shortcut="Space", triggered=self.toggle_play))
@@ -213,6 +222,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # --- model updates ---------------------------------------------------
     def load_entry(self, entry):
+        crashlog.breadcrumb(f"load library entry {entry.id}")
         self.source = entry
         self.baseline = (entry.mechanism, entry.operating_range)
         self.mech = entry.mechanism
@@ -224,6 +234,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_type(self, kind):
         if kind != self.mech.kind:
+            crashlog.breadcrumb(f"new mechanism type {kind}")
             self.mech = REGISTRY[kind]()
             self.operating = None
             self.source = None
@@ -234,6 +245,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_edit(self, mech):
         driver_changed = getattr(mech, "driver", None) != getattr(self.mech, "driver", None)
+        changed = {k: v for k, v in mech.to_dict().items() if self.mech.to_dict().get(k) != v}
+        crashlog.breadcrumb(f"edit mechanism {changed}")
         self.mech = mech
         if driver_changed:
             self.operating = None
@@ -284,6 +297,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def reset_mechanism(self):
         """Restore the template (or type defaults) the design started from."""
+        crashlog.breadcrumb("reset mechanism")
         self.mech, self.operating = self.baseline
         self.circuit_index = 0
         self.editor.set_mechanism(self.mech)  # rebuild: resets slider ranges too
@@ -472,6 +486,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mu_limit = mu_limit
             self.recompute()
 
+    def set_layout_unlocked(self, on):
+        crashlog.breadcrumb(f"panel layout {'unlocked' if on else 'locked'}")
+        feats = (QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable
+                 if on else QtWidgets.QDockWidget.NoDockWidgetFeatures)
+        for d in self._docks:
+            if not on and d.isFloating():
+                d.setFloating(False)
+            d.setFeatures(feats)
+
     def change_text_size(self, delta):
         if delta is None:
             ui, plot = DEFAULTS["ui/font_pt"], DEFAULTS["ui/plot_font_pt"]
@@ -494,6 +517,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # --- units / library -------------------------------------------------
     def set_units(self, unit):
+        crashlog.breadcrumb(f"units {unit}")
         self.unit = unit
         self.editor.set_units(unit)
         self.view.set_units(unit)

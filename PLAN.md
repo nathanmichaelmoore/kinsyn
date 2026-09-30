@@ -533,6 +533,35 @@ on both, whatever the option is set to.
    linkages, common motions), and adds the "use as target", "seed the
    solver", and "save to library" actions.
 6. **Function generation.** Freudenstein, Chebyshev spacing, error plot.
+6b. **Motion-profile synthesis (to discuss).** Edit the kinematic plots
+   directly and synthesize a mechanism that produces them.
+   - **Editable profiles:** the output position, velocity and acceleration
+     plots, and coupler-point speed, get draggable spline handles. You
+     sketch "fast return, slow working stroke", "near-constant velocity
+     over 90°", "dwell with low peak acceleration", and so on, or drag the
+     current mechanism's curve into a new shape.
+   - **What it becomes:** a target for the solver.
+     - An output-position profile is function generation.
+     - A velocity or acceleration profile is integrated to position, plus
+       derivative terms in the objective.
+     - A coupler-speed profile is path generation with timing.
+   - **Exact option:** classical "higher-order" precision points. You
+     specify position *and* velocity (and optionally acceleration) at a
+     few input angles, and each one counts as extra precision conditions
+     in the dyad / Freudenstein equations. So "hit this pose moving at this
+     speed" can still be solved exactly for small cases.
+   - **Consistency checks while editing:**
+     - The velocity of a rocking output must integrate to zero over a
+       cycle, since it returns to where it started.
+     - Peak velocity and acceleration must be achievable at the chosen
+       input speed.
+     - Jerk and acceleration limits are shown as bands.
+     - The editor keeps the three curves consistent. Dragging acceleration
+       updates velocity and position, with position pinned at the
+       precision points.
+   - **Result:** the solver returns the closest achievable mechanism and
+     overlays its actual curves on the requested ones, so the error is
+     visible per region of the cycle.
 7. **Polish for real use.** DXF, SVG, and CSV export, reports, and
    preferences.
 
