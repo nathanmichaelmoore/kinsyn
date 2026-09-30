@@ -536,6 +536,34 @@ on both, whatever the option is set to.
 7. **Polish for real use.** DXF, SVG, and CSV export, reports, and
    preferences.
 
+8. **(Later) Physical design and CAD handoff.** Turn a chosen linkage into
+   parts that can actually be made.
+   - **Link generator:** real link shapes for **flat stock**, meaning
+     laser, waterjet or plasma cut plate (for example from SendCutSend)
+     rather than parts that need CNC machining.
+     - Each link is a plate with rounded ends and pivot holes. The coupler
+       is a plate outline enclosing its pivots and the coupler point.
+     - Inputs: material thickness and hole sizes for the chosen pins,
+       bolts or shoulder bolts, with bushings or bearings.
+     - Checks: minimum edge distance around holes, and the stack-up order
+       (which layer each link sits on, so the links clear each other).
+     - Sliders become slotted plates or a guide rail.
+   - **Flat-pattern export:** one DXF per part at 1:1 scale, with the
+     material and thickness in the file name, ready to upload to
+     SendCutSend or similar services. Also a bill of materials for pins,
+     bushings, spacers and fasteners.
+   - **Fusion 360 integration through its MCP server:** build the linkage
+     in Fusion automatically.
+     - Sketch and extrude each link to the stock thickness.
+     - Stack the links in layers with spacers.
+     - Create **as-built joints** (revolute for pins, slider for prismatic)
+       and set their limits from the operating range.
+     - The result can be animated and checked for interference in Fusion,
+       then sent to Fusion's own sheet-metal and CAM workflows.
+   - **Round trip:** the pivot locations and link lengths from kinsyn are
+     the single source of truth, so re-running synthesis updates the
+     Fusion model's parameters instead of rebuilding it.
+
 Stretch goals: velocity and acceleration analysis, toggle positions and
 mechanical advantage, tolerance sensitivity analysis, and possibly
 multi-loop linkages (six-bars, five-bars) later on the same core.
