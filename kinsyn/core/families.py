@@ -50,7 +50,7 @@ class FourBar(Mechanism):
         Param("a", "Input link a", "length"),
         Param("b", "Coupler b", "length"),
         Param("c", "Output link c", "length"),
-        Param("P", "Coupler point (along AB, left of AB)", "point"),
+        Param("P", "Coupler point P", "point", help="In the coupler frame: x along A to B, y to the left of AB"),
         Param("branch", "Assembly", "branch"),
     )
 
@@ -138,8 +138,8 @@ class SliderCrank(Mechanism):
         Param("a", "Crank a", "length"),
         Param("b", "Coupler b", "length"),
         Param("gamma", "Slider axis angle", "angle"),
-        Param("e", "Slider offset e", "signed_length"),
-        Param("P", "Coupler point (along AB, left of AB)", "point"),
+        Param("e", "Slider offset e", "signed_length", help="Perpendicular distance from A0 to the slider axis"),
+        Param("P", "Coupler point P", "point", help="In the coupler frame: x along A to B, y to the left of AB"),
         Param("branch", "Assembly", "branch"),
         Param("driver", "Input", "choice", ("crank", "slider")),
     )
@@ -236,10 +236,10 @@ class InvertedSliderCrank(Mechanism):
     params = (
         Param("A0", "Crank pivot A0", "point"),
         Param("a", "Crank a", "length"),
-        Param("B0", "Swivel / rocker pivot B0", "point"),
-        Param("e", "Slide offset e", "signed_length"),
-        Param("P", "Point on sliding body (from A, along slide)", "point"),
-        Param("branch", "Assembly (stroke input only)", "branch"),
+        Param("B0", "Swivel pivot B0", "point", help="Ground pivot of the slotted link / cylinder swivel"),
+        Param("e", "Slide offset e", "signed_length", help="Perpendicular distance from B0 to the slide line"),
+        Param("P", "Point P on slide", "point", help="In the sliding body frame: origin A, x along the slide towards B0"),
+        Param("branch", "Assembly", "branch", help="Which of the two assemblies (only matters for stroke input)"),
         Param("driver", "Input", "choice", ("crank", "stroke")),
     )
 
@@ -332,7 +332,7 @@ class ScotchYoke(Mechanism):
         Param("A0", "Crank pivot A0", "point"),
         Param("a", "Crank a", "length"),
         Param("gamma", "Yoke travel angle", "angle"),
-        Param("P", "Point on yoke (from yoke centre)", "point"),
+        Param("P", "Point P on yoke", "point", help="From the yoke centre, x along the travel direction"),
     )
 
     A0: complex = 0j
@@ -390,11 +390,11 @@ class EllipticalTrammel(Mechanism):
     kind = "trammel"
     title = "Elliptical trammel (PRRP)"
     params = (
-        Param("O", "Guide intersection O", "point"),
+        Param("O", "Guide crossing O", "point"),
         Param("gamma1", "Guide 1 angle", "angle"),
         Param("gamma2", "Guide 2 angle", "angle"),
         Param("b", "Coupler b", "length"),
-        Param("P", "Coupler point (along B1B2, left)", "point"),
+        Param("P", "Coupler point P", "point", help="In the coupler frame: x along B1 to B2, y to the left"),
     )
 
     O: complex = 0j

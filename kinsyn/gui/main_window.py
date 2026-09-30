@@ -1,0 +1,364 @@
+"""Main window: library | mechanism view | editor + analysis, with playback
+and circuit plots along the bottom."""
+
+import html
+import math
+import re
+
+import numpy as np
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from kinsyn.core.analysis import MU_LIMIT_DEFAULT, analyze, mechanical_advantage, trace_circuit
+from kinsyn.core.families import FourBar
+from kinsyn.core.mechanism import REGISTRY
+from kinsyn.core.units import LENGTH_UNITS, format_angle, format_length
+from kinsyn.library.catalog import Entry, save_user_entry
+
+from .editor import ParamEditor, ValueField
+from .library_panel import LibraryPanel
+from .plots import CircuitPlots
+from .view import MechanismView
+
+SPEEDS = [("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)]
+N_SAMPLES = 720
+CYCLE_SECONDS = 4.0  # one circuit at 1x speed
+
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("kinsyn: planar kinematic synthesis")
+        self.resize(1500, 950)
+        self.unit = "mm"
+        self.mech = FourBar()
+        self.operating = None  # (lo, hi) in input units, or None
+        self.circuit_index = 0
+        self.circuit = None
+        self.index = 0.0
+        self.mu_limit = MU_LIMIT_DEFAULT
+
+        self.view = MechanismView()
+        self.setCentralWidget(self.view)
+
+        # Library (left)
+        self.library = LibraryPanel()
+        self.library.entrySelected.connect(self.load_entry)
+        self.setCorner(QtCore.Qt.BottomLeftCorner, QtCore.Qt.LeftDockWidgetArea)
+        self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
+        lib_dock = self._dock("Library", self.library, QtCore.Qt.LeftDockWidgetArea)
+
+        # Editor + analysis (right)
+        right = QtWidgets.QWidget()
+        rl = QtWidgets.QVBoxLayout(right)
+        self.editor = ParamEditor()
+        self.editor.changed.connect(self.on_edit)
+        self.editor.typeChanged.connect(self.on_type)
+        rl.addWidget(self.editor)
+        rl.addWidget(self._build_motion_box())
+        self.summary = QtWidgets.QLabel()
+        self.summary.setWordWrap(True)
+        self.summary.setTextFormat(QtCore.Qt.RichText)
+        self.summary.setAlignment(QtCore.Qt.AlignTop)
+        rl.addWidget(self.summary, 1)
+        save = QtWidgets.QPushButton("Save to library…")
+        save.clicked.connect(self.save_to_library)
+        rl.addWidget(save)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidget(right)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(440)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        mech_dock = self._dock("Mechanism", scroll, QtCore.Qt.RightDockWidgetArea)
+
+        # Playback + plots (bottom)
+        bottom = QtWidgets.QWidget()
+        bl = QtWidgets.QVBoxLayout(bottom)
+        bl.addLayout(self._build_playback())
+        self.plots = CircuitPlots()
+        self.plots.scrubbed.connect(self.seek)
+        bl.addWidget(self.plots)
+        motion_dock = self._dock("Motion", bottom, QtCore.Qt.BottomDockWidgetArea)
+        self.resizeDocks([lib_dock, mech_dock], [280, 460], QtCore.Qt.Horizontal)
+        self.resizeDocks([motion_dock], [270], QtCore.Qt.Vertical)
+
+        # Status bar: units
+        self.unit_combo = QtWidgets.QComboBox()
+        self.unit_combo.addItems(list(LENGTH_UNITS))
+        self.unit_combo.currentTextChanged.connect(self.set_units)
+        self.statusBar().addPermanentWidget(QtWidgets.QLabel("Units:"))
+        self.statusBar().addPermanentWidget(self.unit_combo)
+
+        self._build_menu()
+        self.timer = QtCore.QTimer(self)
+        self.timer.setInterval(16)
+        self.timer.timeout.connect(self._tick)
+        self.editor.set_mechanism(self.mech)
+        self.recompute(autorange=True)
+        self.timer.start()
+
+    # --- construction ----------------------------------------------------
+    def _dock(self, title, widget, area):
+        dock = QtWidgets.QDockWidget(title, self)
+        dock.setObjectName(title)
+        dock.setWidget(widget)
+        dock.setFeatures(QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable)
+        self.addDockWidget(area, dock)
+        return dock
+
+    def _build_menu(self):
+        m = self.menuBar().addMenu("&File")
+        act = QtGui.QAction("Save to library…", self, shortcut="Ctrl+S", triggered=self.save_to_library)
+        m.addAction(act)
+        m.addAction(QtGui.QAction("Quit", self, shortcut="Ctrl+Q", triggered=self.close))
+        v = self.menuBar().addMenu("&View")
+        v.addAction(QtGui.QAction("Fit to window", self, shortcut="F", triggered=self.view.autorange))
+        v.addAction(QtGui.QAction("Play / pause", self, shortcut="Space", triggered=self.toggle_play))
+
+    def _build_motion_box(self):
+        box = QtWidgets.QGroupBox("Motion")
+        form = QtWidgets.QFormLayout(box)
+        self.circuit_combo = QtWidgets.QComboBox()
+        self.circuit_combo.activated.connect(self.on_circuit)
+        form.addRow("Circuit", self.circuit_combo)
+        self.limit_check = QtWidgets.QCheckBox("Limit input to an operating range")
+        self.limit_check.toggled.connect(self.on_limit_toggled)
+        form.addRow(self.limit_check)
+        row = QtWidgets.QWidget()
+        hl = QtWidgets.QHBoxLayout(row)
+        hl.setContentsMargins(0, 0, 0, 0)
+        self.op_lo = ValueField("angle", self.unit)
+        self.op_hi = ValueField("angle", self.unit)
+        self.op_lo.committed.connect(self.on_operating_edit)
+        self.op_hi.committed.connect(self.on_operating_edit)
+        hl.addWidget(QtWidgets.QLabel("from"))
+        hl.addWidget(self.op_lo)
+        hl.addWidget(QtWidgets.QLabel("to"))
+        hl.addWidget(self.op_hi)
+        self.op_row = row
+        form.addRow(row)
+        return box
+
+    def _build_playback(self):
+        hl = QtWidgets.QHBoxLayout()
+        self.play_btn = QtWidgets.QPushButton("Pause")
+        self.play_btn.setFixedWidth(80)
+        self.play_btn.clicked.connect(self.toggle_play)
+        hl.addWidget(self.play_btn)
+        self.speed = QtWidgets.QComboBox()
+        for label, v in SPEEDS:
+            self.speed.addItem(label, v)
+        self.speed.setCurrentIndex(2)
+        hl.addWidget(self.speed)
+        self.scrub = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.scrub.setRange(0, N_SAMPLES - 1)
+        self.scrub.valueChanged.connect(lambda i: self.seek(i) if self.scrub.isSliderDown() else None)
+        self.scrub.sliderPressed.connect(lambda: self.set_playing(False))
+        hl.addWidget(self.scrub, 1)
+        self.readout = QtWidgets.QLabel()
+        self.readout.setMinimumWidth(320)
+        hl.addWidget(self.readout)
+        return hl
+
+    # --- model updates ---------------------------------------------------
+    def load_entry(self, entry):
+        self.mech = entry.mechanism
+        self.operating = entry.operating_range
+        self.circuit_index = 0
+        self.editor.set_mechanism(self.mech)
+        self.index = 0.0
+        self.recompute(autorange=True)
+
+    def on_type(self, kind):
+        if kind != self.mech.kind:
+            self.mech = REGISTRY[kind]()
+            self.operating = None
+            self.circuit_index = 0
+            self.editor.set_mechanism(self.mech)
+            self.recompute(autorange=True)
+
+    def on_edit(self, mech):
+        driver_changed = getattr(mech, "driver", None) != getattr(self.mech, "driver", None)
+        self.mech = mech
+        if driver_changed:
+            self.operating = None
+            self.circuit_index = 0
+        self.recompute(autorange=driver_changed)
+
+    def on_circuit(self, i):
+        self.circuit_index = i
+        self.recompute()
+
+    def on_limit_toggled(self, on):
+        if on and self.operating is None:
+            # Default to the current circuit's input range, trimmed a little.
+            lo, hi = self.circuit.interval if self.circuit else (0.0, 1.0)
+            if self.circuit and self.circuit.full_rotation:
+                lo, hi = lo, lo + math.pi / 2
+            self.operating = (lo, hi)
+        elif not on:
+            self.operating = None
+        self.recompute()
+
+    def on_operating_edit(self, _):
+        self.operating = (self.op_lo.value, self.op_hi.value)
+        self.recompute()
+
+    def recompute(self, autorange=False):
+        intervals, full, circuit, summary = analyze(self.mech, self.circuit_index, N_SAMPLES,
+                                                    self.operating, self.mu_limit)
+        self.circuit = circuit
+        self._update_motion_box(intervals, full)
+        if circuit is None:
+            self.view.clear_mechanism()
+            reason = ("The operating range is outside the range where the mechanism assembles."
+                      if self.operating and intervals else "These dimensions cannot be assembled.")
+            self.summary.setText(f"<p style='color:#ef5350'><b>{reason}</b></p>")
+            self.readout.setText("")
+            return
+        others = []
+        if self.operating is None:
+            if full and self.mech.has_branches:
+                others.append(trace_circuit(self.mech.copy(branch=-self.mech.branch), intervals[0], True,
+                                            N_SAMPLES).frames)
+            for j, iv in enumerate(intervals):
+                if j != self.circuit_index and not full:
+                    others.append(trace_circuit(self.mech, iv, False, N_SAMPLES).frames)
+        toggles = [i for i, _ in summary.toggles]
+        self.view.set_circuit(self.mech, circuit, others, toggles, autorange)
+        ma = mechanical_advantage(self.mech, circuit)
+        self.plots.set_data(self.mech, circuit, ma, self.unit, self.mu_limit)
+        self.summary.setText(self._summary_html(summary, intervals, full))
+        self._ma = ma
+        self.index = min(self.index, N_SAMPLES - 1)
+        self.show_index(int(self.index))
+
+    def _update_motion_box(self, intervals, full):
+        self.circuit_combo.blockSignals(True)
+        self.circuit_combo.clear()
+        if full:
+            self.circuit_combo.addItem("Full rotation")
+        else:
+            for lo, hi in intervals:
+                self.circuit_combo.addItem(f"Input {self._fmt_in(lo)} to {self._fmt_in(hi)}")
+        self.circuit_combo.setCurrentIndex(min(self.circuit_index, self.circuit_combo.count() - 1))
+        self.circuit_combo.setEnabled(self.operating is None and self.circuit_combo.count() > 1)
+        self.circuit_combo.blockSignals(False)
+
+        kind = "angle" if self.mech.input_kind == "angle" else "length"
+        for f in (self.op_lo, self.op_hi):
+            f.kind = kind
+            f.set_unit(self.unit)
+        self.limit_check.blockSignals(True)
+        self.limit_check.setChecked(self.operating is not None)
+        self.limit_check.blockSignals(False)
+        self.op_row.setEnabled(self.operating is not None)
+        if self.operating is not None:
+            self.op_lo.set_value(self.operating[0])
+            self.op_hi.set_value(self.operating[1])
+        else:
+            self.op_lo.clear()
+            self.op_hi.clear()
+
+    # --- formatting ------------------------------------------------------
+    def _fmt_in(self, v):
+        if self.mech.input_kind == "angle":
+            return f"{format_angle(v, 1)}°"
+        return f"{format_length(v, self.unit)} {self.unit}"
+
+    def _fmt_out(self, v):
+        if self.mech.output_kind == "angle":
+            return f"{format_angle(v, 1)}°"
+        return f"{format_length(v, self.unit)} {self.unit}"
+
+    def _summary_html(self, s, intervals, full):
+        rows = [("Class", f"<b>{html.escape(s.classification)}</b>")]
+        if full:
+            rows.append(("Input", "rotates fully"))
+        else:
+            rows.append(("Input", "rocks: " + ", ".join(f"{self._fmt_in(a)} to {self._fmt_in(b)}"
+                                                         for a, b in intervals)))
+        if s.output_rotates:
+            rows.append(("Output", "rotates fully"))
+        else:
+            lo, hi = s.output_range
+            span = f"{format_angle(hi - lo, 1)}°" if self.mech.output_kind == "angle" else \
+                f"{format_length(hi - lo, self.unit)} {self.unit}"
+            rows.append(("Output travel", f"{span}  ({self._fmt_out(lo)} to {self._fmt_out(hi)})"))
+        if math.isfinite(s.mu_min):
+            bad = s.mu_min < self.mu_limit
+            color = "#ef5350" if bad else "#66bb6a"
+            rows.append(("Transmission angle",
+                         f"{format_angle(s.mu_range[0], 1)}° to {format_angle(s.mu_range[1], 1)}°, "
+                         f"worst <span style='color:{color}'>{format_angle(s.mu_min, 1)}°</span>"))
+        if s.time_ratio:
+            rows.append(("Time ratio", f"{s.time_ratio:.3f}"))
+        if s.toggles:
+            rows.append(("Toggle positions", ", ".join(self._fmt_in(q) for _, q in s.toggles)))
+        if s.over_center is not None:
+            val = (f"{format_angle(s.over_center, 2)}°" if self.mech.input_kind == "angle"
+                   else f"{format_length(s.over_center, self.unit)} {self.unit}")
+            rows.append(("Over-center", f"<span style='color:#66bb6a'>{val} past toggle</span>"))
+        table = "".join(f"<tr><td style='color:#8a93a3;padding-right:10px'>{k}</td><td>{v}</td></tr>"
+                        for k, v in rows)
+        notes = "".join(f"<li>{html.escape(n)}</li>" for n in s.notes)
+        warns = "".join(f"<li style='color:#ef5350'>{html.escape(w)}</li>" for w in s.warnings)
+        return f"<table>{table}</table><ul>{warns}{notes}</ul>"
+
+    # --- playback --------------------------------------------------------
+    def set_playing(self, on):
+        if on:
+            self.timer.start()
+        else:
+            self.timer.stop()
+        self.play_btn.setText("Pause" if on else "Play")
+
+    def toggle_play(self):
+        self.set_playing(not self.timer.isActive())
+
+    def _tick(self):
+        if self.circuit is None:
+            return
+        step = N_SAMPLES * self.timer.interval() / 1000.0 / CYCLE_SECONDS * self.speed.currentData()
+        self.index = (self.index + step) % N_SAMPLES
+        self.show_index(int(self.index))
+
+    def seek(self, i):
+        self.set_playing(False)
+        self.index = float(i)
+        self.show_index(i)
+
+    def show_index(self, i):
+        if self.circuit is None:
+            return
+        self.view.show_frame(i)
+        self.plots.set_index(i)
+        self.scrub.blockSignals(True)
+        self.scrub.setValue(i)
+        self.scrub.blockSignals(False)
+        f = self.circuit.frames
+        mu = f.mu[i]
+        mu_txt = f"   μ {format_angle(mu, 1)}°" if np.isfinite(mu) else ""
+        ma = self._ma[i]
+        ma_txt = f"   MA {ma:.2f}" if np.isfinite(ma) and ma < 1e3 else "   MA ∞ (toggle)"
+        self.readout.setText(f"input {self._fmt_in(f.q[i])}   output {self._fmt_out(f.output[i])}"
+                             f"{mu_txt}{ma_txt}")
+
+    # --- units / library -------------------------------------------------
+    def set_units(self, unit):
+        self.unit = unit
+        self.editor.set_units(unit)
+        self.view.set_units(unit)
+        self.recompute()
+
+    def save_to_library(self):
+        name, ok = QtWidgets.QInputDialog.getText(self, "Save to library", "Name:")
+        if not ok or not name.strip():
+            return
+        notes, _ = QtWidgets.QInputDialog.getMultiLineText(self, "Save to library", "Notes (optional):")
+        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "design"
+        entry = Entry(id=f"user_{slug}", name=name.strip(), group="My designs",
+                      description=notes, mechanism=self.mech, tags=["mine"],
+                      operating_range=self.operating, builtin=False)
+        path = save_user_entry(entry)
+        self.library.reload()
+        self.statusBar().showMessage(f"Saved to {path}", 5000)

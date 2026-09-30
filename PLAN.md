@@ -325,6 +325,29 @@ four-bar that traces a desired shape.
   definition, the ranges for its sliders, a description, and its tags.
   Thumbnails are generated from the geometry, never stored as images.
 
+## Over-center (toggle) mechanisms
+
+Over-center locks are a first-class design target, used in toggle clamps,
+latches, toggle presses and folding mechanisms.
+- **Toggle detection:** a toggle is where the input link and coupler are
+  collinear. At that point the output is at a dead point and mechanical
+  advantage goes to infinity. Every analysis detects and reports these
+  positions, interpolated between samples, and marks them on the coupler
+  curve.
+- **Operating range:** the input can be limited to a working range, for
+  example from an "open" angle to a stop. The circuit, metrics and plots
+  then cover only that range.
+- **Over-center amount:** if a toggle lies inside the operating range, the
+  report shows how far past the toggle the stop sits (typically 2–5°).
+  Without one, it notes that the mechanism will not lock.
+- **Mechanical advantage:** plotted along the circuit, on a log scale.
+- **Library templates:** a four-bar toggle clamp and a slider toggle
+  press/latch.
+- **Later (synthesis):** "design an over-center clamp" as a target type.
+  You specify the open pose, the clamped pose, the over-center angle and
+  the handle travel. The solver places the toggle just before the clamped
+  pose.
+
 ## Validity requirements (enforced, not just reported)
 
 Every candidate from every solver must pass these checks before it

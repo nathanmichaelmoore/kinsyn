@@ -216,7 +216,7 @@ def summarize(mech: Mechanism, circuit: Circuit, intervals, full, mu_limit=MU_LI
             val = math.degrees(over_center) if unit == "deg" else over_center
             notes.append(f"over-center: stop is {val:.2f} {unit} past the toggle")
         else:
-            warnings.append("no toggle inside the operating range: will not lock over center")
+            notes.append("no toggle inside the operating range (no over-center lock)")
 
     return Summary(name, notes, intervals, full, mu_min, mu_range, out_range,
                    output_rotates, time_ratio, toggles, warnings, over_center)

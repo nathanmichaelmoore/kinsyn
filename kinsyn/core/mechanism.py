@@ -18,6 +18,7 @@ class Param:
     # length | signed_length | angle | point | branch | choice
     kind: str
     choices: tuple = ()
+    help: str = ""
 
 
 @dataclass

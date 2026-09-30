@@ -9,7 +9,7 @@
     "actuator",
     "lever"
   ],
-  "description": "A cylinder pivots on the ground at B0 and pushes a lever (the crank) at A. It is found in excavators, loaders, tailgates and dump beds. The transmission angle is the angle between the cylinder and the lever.",
+  "description": "A cylinder pivots on the ground at B0 and pushes a lever (the crank) at A. It is found in excavators, loaders, tailgates and dump beds. The operating range is the cylinder's stroke (distance from A to the swivel), so change it to match your cylinder's retracted and extended lengths. Over the full geometric range the crank could go all the way round, as in an oscillating-cylinder steam engine. A real cylinder's limited stroke keeps it a lever. The transmission angle is the angle between the cylinder and the lever.",
   "expected_class": "Oscillating cylinder (stroke input)",
   "mechanism": {
     "type": "inverted_slider",
@@ -29,5 +29,9 @@
     ],
     "branch": 1,
     "driver": "stroke"
-  }
+  },
+  "operating_range": [
+    95.0,
+    150.0
+  ]
 }

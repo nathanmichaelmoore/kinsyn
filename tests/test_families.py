@@ -127,7 +127,7 @@ def test_toggle_press_over_center():
     _, _, _, s = analyze(m, operating=(math.radians(-70), math.radians(4)))
     assert s.over_center == pytest.approx(math.radians(4), abs=1e-6)
     _, _, _, s = analyze(m, operating=(math.radians(-70), math.radians(-4)))
-    assert s.over_center is None and s.warnings
+    assert s.over_center is None and any("no over-center" in n for n in s.notes)
 
 
 @pytest.mark.parametrize("m", ALL_DEFAULTS, ids=lambda m: m.kind)
