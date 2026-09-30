@@ -14,7 +14,16 @@ from kinsyn.core.mechanism import REGISTRY
 from kinsyn.core.units import LENGTH_UNITS, format_angle, format_length
 from kinsyn.library.catalog import Entry, save_user_entry
 
+from pathlib import Path
+
+from kinsyn.core.project import Project, load_project, save_project
+
 from . import crashlog
+from .document import TargetDocument
+from .target_layer import TargetLayer
+from .target_panel import TargetPanel
+from .timeline import Timeline
+from .tools import BodyTool, EditorContext, PoseTool, SelectTool
 from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
@@ -24,6 +33,7 @@ from .view import MechanismView
 SPEEDS = [("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)]
 N_SAMPLES = 720
 CYCLE_SECONDS = 4.0  # one circuit at 1x speed
+LAYOUT_VERSION = 2  # bump when docks are added/removed so stale layouts are ignored
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -88,9 +98,27 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         mech_dock = self._dock("Mechanism", scroll, QtCore.Qt.RightDockWidgetArea)
 
+        # Target editing (document, canvas layer, panel)
+        self.doc = TargetDocument(self)
+        self.layer = TargetLayer(self.view, self.doc)
+        self.target_panel = TargetPanel(self.doc)
+        tscroll = QtWidgets.QScrollArea()
+        tscroll.setWidget(self.target_panel)
+        tscroll.setWidgetResizable(True)
+        tscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.target_dock = self._dock("Target", tscroll, QtCore.Qt.RightDockWidgetArea)
+        self.tabifyDockWidget(mech_dock, self.target_dock)
+        mech_dock.raise_()
+        self.project_path = None
+        self.doc.undo.cleanChanged.connect(lambda _: self._update_title())
+        self.doc.changed.connect(lambda: crashlog.breadcrumb(
+            f"target edit: {self.doc.undo.undoText() or 'reset'}"))
+
         # Playback + plots (bottom)
         bottom = QtWidgets.QWidget()
         bl = QtWidgets.QVBoxLayout(bottom)
+        self.timeline = Timeline(self.doc)
+        bl.addWidget(self.timeline)
         bl.addLayout(self._build_playback())
         self.plots = CircuitPlots(self.settings.get_raw("plots/panels"))
         self.plots.scrubbed.connect(self.seek)
@@ -108,16 +136,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().addPermanentWidget(QtWidgets.QLabel("Units:"))
         self.statusBar().addPermanentWidget(self.unit_combo)
 
+        self._build_tools()
         self._build_menu()
+        self._update_title()
         self._default_layout = self.saveState()
         self.editor.set_units(self.unit)
         self.view.set_units(self.unit)
+        self.target_panel.set_units(self.unit)
         self._apply_fonts()
         geo, state = self.settings.get_raw("window/geometry"), self.settings.get_raw("window/state")
         if geo is not None:
             self.restoreGeometry(geo)
         if state is not None:
-            self.restoreState(state)
+            self.restoreState(state, LAYOUT_VERSION)
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(16)
         self.timer.timeout.connect(self._tick)
@@ -137,12 +168,190 @@ class MainWindow(QtWidgets.QMainWindow):
         self._docks = getattr(self, "_docks", []) + [dock]
         return dock
 
+    def _build_tools(self):
+        self.ctx = EditorContext(self)
+        self.tools = {"select": SelectTool(self.ctx), "pose": PoseTool(self.ctx, True),
+                      "point": PoseTool(self.ctx, False), "body": BodyTool(self.ctx)}
+        tb = QtWidgets.QToolBar("Tools")
+        tb.setObjectName("Tools")
+        tb.setMovable(False)
+        tb.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, tb)
+        group = QtGui.QActionGroup(self)
+        self.tool_actions = {}
+        for name, label, key, tip in (
+                ("select", "Select", "V", "Select, move and rotate keyframes"),
+                ("pose", "Pose", "P", "Place poses (click) and aim them (drag)"),
+                ("point", "Point", "O", "Place path points"),
+                ("body", "Body", "B", "Draw the outline of the moving part")):
+            a = QtGui.QAction(label, self, checkable=True, shortcut=key)
+            a.setToolTip(f"{tip} ({key})")
+            a.triggered.connect(lambda _, n=name: self.set_tool(n))
+            group.addAction(a)
+            tb.addAction(a)
+            self.tool_actions[name] = a
+        tb.addSeparator()
+        self.snap_action = QtGui.QAction("Snap", self, checkable=True, checked=True, shortcut="S")
+        self.snap_action.setToolTip("Snapping to grid, points and alignment (S). Hold Alt to suppress, "
+                                    "Shift for 15° angle steps.")
+        self.snap_action.toggled.connect(lambda on: setattr(self.ctx, "snapping", on))
+        tb.addAction(self.snap_action)
+
+        self.prompt = QtWidgets.QLabel()
+        self.cmd = QtWidgets.QLineEdit()
+        self.cmd.setPlaceholderText("type coordinates…")
+        self.cmd.setFixedWidth(200)
+        self.cmd.returnPressed.connect(self._on_cmd)
+        self.statusBar().addWidget(self.prompt, 1)
+        self.statusBar().addWidget(self.cmd)
+        self.view.hovered.connect(lambda p: self.tool.hover(p))
+        self.view.typed.connect(self._start_typing)
+        self.view.keyPressed.connect(self._on_view_key)
+        self.tool = None
+        self.set_tool("select")
+
+    def set_tool(self, name):
+        if self.tool is not None:
+            self.tool.deactivate()
+        self.tool = self.tools[name]
+        self.view.edit_vb.tool = self.tool
+        self.tool_actions[name].setChecked(True)
+        self.tool.activate()
+        if name in ("pose", "point") and self.doc.target.mode != ("motion" if name == "pose" else "path"):
+            mode = "motion" if name == "pose" else "path"
+            self.doc.edit("Change synthesis mode", lambda t: setattr(t, "mode", mode))
+        if name != "select":
+            self.target_dock.raise_()
+        crashlog.breadcrumb(f"tool {name}")
+
+    def set_prompt(self, text):
+        self.prompt.setText(text)
+
+    def _start_typing(self, text):
+        self.cmd.setFocus()
+        self.cmd.setText(self.cmd.text() + text)
+
+    def _on_cmd(self):
+        text = self.cmd.text().strip()
+        if not text:
+            self.view.setFocus()
+            return
+        try:
+            ok = self.tool.text(text)
+        except ValueError as exc:
+            self.cmd.setStyleSheet("QLineEdit { border: 1px solid #ef5350; }")
+            self.statusBar().showMessage(f"Could not use '{text}': {exc}", 4000)
+            return
+        self.cmd.setStyleSheet("")
+        if ok:
+            self.cmd.clear()
+            self.view.setFocus()
+
+    def _on_view_key(self, key):
+        if self.tool.key(key):
+            return
+        if key == QtCore.Qt.Key_Escape:
+            self.doc.select(None)
+            self.set_tool("select")
+
+    def mechanism_snap_points(self):
+        if self.circuit is None:
+            return []
+        return [self.circuit.frames.points[k][0] for k in self.mech.drawing().ground]
+
+    # --- project files ---------------------------------------------------
+    def _update_title(self):
+        name = Path(self.project_path).name if self.project_path else "Untitled"
+        dirty = "" if self.doc.undo.isClean() else " *"
+        self.setWindowTitle(f"{name}{dirty} – kinsyn")
+
+    def _maybe_save(self):
+        if self.doc.undo.isClean():
+            return True
+        r = QtWidgets.QMessageBox.question(
+            self, "Unsaved changes", "Save changes to the project first?",
+            QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+        if r == QtWidgets.QMessageBox.Save:
+            return self.save_project()
+        return r == QtWidgets.QMessageBox.Discard
+
+    def new_project(self):
+        if not self._maybe_save():
+            return
+        from kinsyn.core.target import Target
+        self.doc.reset(Target())
+        self.project_path = None
+        self._update_title()
+
+    def open_project(self, path=None):
+        if not self._maybe_save():
+            return
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open project", "", "kinsyn project (*.kinsyn)")
+            if not path:
+                return
+        try:
+            proj = load_project(path)
+        except (OSError, ValueError, KeyError) as exc:
+            QtWidgets.QMessageBox.warning(self, "Open project", f"Could not open {path}:\n{exc}")
+            return
+        crashlog.breadcrumb(f"open project {path}")
+        self.doc.reset(proj.target)
+        if proj.mechanism is not None:
+            self.source = None
+            self.mech, self.operating = proj.mechanism, proj.operating_range
+            self.baseline = (self.mech, self.operating)
+            self.editor.set_mechanism(self.mech)
+        self.unit_combo.setCurrentText(proj.units)
+        self.project_path = path
+        self.doc.undo.setClean()
+        self._update_title()
+        self.recompute(autorange=True)
+
+    def save_project(self, save_as=False):
+        path = self.project_path
+        if save_as or not path:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save project", path or "untitled.kinsyn",
+                                                            "kinsyn project (*.kinsyn)")
+            if not path:
+                return False
+            if not path.endswith(".kinsyn"):
+                path += ".kinsyn"
+        proj = Project(target=self.doc.target, mechanism=self.mech, operating_range=self.operating,
+                       units=self.unit)
+        try:
+            save_project(proj, path)
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Save project", f"Could not save {path}:\n{exc}")
+            return False
+        crashlog.breadcrumb(f"save project {path}")
+        self.project_path = path
+        self.doc.undo.setClean()
+        self._update_title()
+        self.statusBar().showMessage(f"Saved {path}", 3000)
+        return True
+
     def _build_menu(self):
         m = self.menuBar().addMenu("&File")
-        act = QtGui.QAction("Save to library…", self, shortcut="Ctrl+S", triggered=self.save_to_library)
-        m.addAction(act)
+        m.addAction(QtGui.QAction("New project", self, shortcut="Ctrl+N", triggered=self.new_project))
+        m.addAction(QtGui.QAction("Open project…", self, shortcut="Ctrl+O", triggered=lambda: self.open_project()))
+        m.addAction(QtGui.QAction("Save project", self, shortcut="Ctrl+S", triggered=lambda: self.save_project()))
+        m.addAction(QtGui.QAction("Save project as…", self, shortcut="Ctrl+Shift+S",
+                                  triggered=lambda: self.save_project(True)))
+        m.addSeparator()
+        m.addAction(QtGui.QAction("Save mechanism to library…", self, shortcut="Ctrl+L",
+                                  triggered=self.save_to_library))
         m.addAction(QtGui.QAction("Quit", self, shortcut="Ctrl+Q", triggered=self.close))
         e = self.menuBar().addMenu("&Edit")
+        undo = self.doc.undo.createUndoAction(self, "Undo")
+        undo.setShortcut(QtGui.QKeySequence.Undo)
+        redo = self.doc.undo.createRedoAction(self, "Redo")
+        redo.setShortcut(QtGui.QKeySequence.Redo)
+        e.addAction(undo)
+        e.addAction(redo)
+        e.addAction(QtGui.QAction("Delete keyframe", self, shortcut="Delete",
+                                  triggered=self.target_panel.delete_selected))
+        e.addSeparator()
         e.addAction(QtGui.QAction("Reset mechanism", self, shortcut="Ctrl+R", triggered=self.reset_mechanism))
         e.addAction(QtGui.QAction("Preferences…", self, shortcut="Ctrl+,", triggered=self.show_preferences))
         v = self.menuBar().addMenu("&View")
@@ -447,6 +656,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.view.show_frame(i)
         self.plots.set_index(i)
+        q = self.circuit.frames.q[i]
+        self.timeline.set_playhead(q if self.mech.input_kind == "angle" else None)
         self.scrub.blockSignals(True)
         self.scrub.setValue(i)
         self.scrub.blockSignals(False)
@@ -511,8 +722,11 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.exec()
 
     def closeEvent(self, event):
+        if not self._maybe_save():
+            event.ignore()
+            return
         self.settings.set_raw("window/geometry", self.saveGeometry())
-        self.settings.set_raw("window/state", self.saveState())
+        self.settings.set_raw("window/state", self.saveState(LAYOUT_VERSION))
         super().closeEvent(event)
 
     # --- units / library -------------------------------------------------
@@ -521,6 +735,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.unit = unit
         self.editor.set_units(unit)
         self.view.set_units(unit)
+        self.target_panel.set_units(unit)
+        self.layer.redraw()
         self.recompute()
 
     def save_to_library(self):

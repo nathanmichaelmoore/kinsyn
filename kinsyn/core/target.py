@@ -212,7 +212,7 @@ class Target:
         if not exact:
             return f"{n} poses with tolerance → optimizer"
         if timed and n > 3:
-            return f"{n} exact poses with prescribed timing → optimizer (over-constrained for exact synthesis)"
+            return f"{n} exact poses with prescribed timing → optimizer (exact solutions only up to 3 timed poses)"
         return {
             2: "2 exact poses → closed-form dyads (many free choices)",
             3: "3 exact poses → dyad solve (choose the free parameters)",

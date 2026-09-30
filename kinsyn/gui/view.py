@@ -17,9 +17,56 @@ PIN_FILL = "#1e2127"
 TOGGLE = "#ef5350"
 
 
+class EditViewBox(pg.ViewBox):
+    """ViewBox that offers left-button clicks and drags to the active editing
+    tool first (in mm); anything the tool declines pans / zooms as usual."""
+
+    def __init__(self):
+        super().__init__()
+        self.tool = None
+        self.factor = 1.0
+        self._tool_drag = False
+
+    def to_mm(self, pos):
+        v = self.mapToView(pos)
+        return complex(v.x(), v.y()) * self.factor
+
+    def mouseClickEvent(self, ev):
+        if self.tool is not None and ev.button() == QtCore.Qt.LeftButton:
+            if self.tool.click(self.to_mm(ev.pos()), ev):
+                ev.accept()
+                return
+        super().mouseClickEvent(ev)
+
+    def mouseDragEvent(self, ev, axis=None):
+        if self.tool is not None and ev.button() == QtCore.Qt.LeftButton:
+            if ev.isStart():
+                self._tool_drag = bool(self.tool.drag_start(self.to_mm(ev.buttonDownPos()), ev))
+            if self._tool_drag:
+                ev.accept()
+                p = self.to_mm(ev.pos())
+                if ev.isFinish():
+                    self._tool_drag = False
+                    self.tool.drag_end(p, ev)
+                elif not ev.isStart():
+                    self.tool.drag_move(p, ev)
+                return
+        super().mouseDragEvent(ev, axis)
+
+
 class MechanismView(pg.PlotWidget):
+    """Mechanism canvas. Emits `hovered(mm)` for tools and `typed(text)` when
+    the user starts typing coordinates while the canvas has focus."""
+
+    hovered = QtCore.Signal(complex)
+    typed = QtCore.Signal(str)
+    keyPressed = QtCore.Signal(int)
+
     def __init__(self, parent=None):
-        super().__init__(parent)
+        self.edit_vb = EditViewBox()
+        super().__init__(parent, viewBox=self.edit_vb)
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.setAspectLocked(True)
         self.showGrid(x=True, y=True, alpha=0.12)
         self.getPlotItem().hideButtons()
@@ -57,8 +104,23 @@ class MechanismView(pg.PlotWidget):
         z = np.asarray(z) / self.factor
         return z.real, z.imag
 
+    def _on_mouse_moved(self, scene_pos):
+        vb = self.edit_vb
+        if vb.sceneBoundingRect().contains(scene_pos):
+            v = vb.mapSceneToView(scene_pos)
+            self.hovered.emit(complex(v.x(), v.y()) * self.factor)
+
+    def keyPressEvent(self, ev):
+        text = ev.text()
+        if text and (text[0].isdigit() or text[0] in "-.@(") and not ev.modifiers() & QtCore.Qt.ControlModifier:
+            self.typed.emit(text)
+            return
+        self.keyPressed.emit(ev.key())
+        super().keyPressEvent(ev)
+
     def set_units(self, unit):
         self.factor = LENGTH_UNITS[unit]
+        self.edit_vb.factor = self.factor
         self.unit = unit
         style_plot(self.getPlotItem(), getattr(self, "pt", 9.0), labels={"bottom": unit, "left": unit})
         if self.circuit is not None:
