@@ -525,8 +525,8 @@ on both, whatever the option is set to.
 
 ## Milestones
 
-Status (2026-10-19): milestones 1, 2 and 3 are done, plus help and docs,
-preferences and crash diagnostics. Milestone 4 is next.
+Status (2026-10-19): milestones 1 to 4 are done, plus help and docs,
+preferences and crash diagnostics. Milestone 5 (path generation) is next.
 
 Milestone 3 as built (`kinsyn/synthesis/`, Synthesis tab):
 - Dyads: pin-pin (from a ground pivot), slider on ground (from a rail
@@ -542,6 +542,20 @@ Milestone 3 as built (`kinsyn/synthesis/`, Synthesis tab):
 - Live: the picked design is re-solved from the same free choices on every
   edit (and follows dragged fixed pivots); the full search re-runs in a
   background thread. Tolerances are ignored by these exact solvers.
+
+Milestone 4 as built (`kinsyn/synthesis/burmester.py`):
+- The dyad systems take any number of poses (least squares plus a
+  geometric fit check). The center-point curve is the zero set of the 3x3
+  determinant [A | b] of the RR system (a cubic in G), contoured by marching
+  squares and refined by Newton steps; circle points come from the same
+  system. Burmester points: crossings of the 1234 and 1235 curves, verified
+  against all 5 poses (poles and zero-length cranks dropped). Slider and
+  swivel directions: roots of the PR / RP determinants.
+- Free choices snap onto what works (curve, nearest Burmester point,
+  nearest root), so tracking and fixed pivots follow the curve.
+- Canvas overlay: center-point curve with the stretches used by valid
+  designs in green, circle-point curve, Burmester points, slider options;
+  the Pivot tool snaps onto the curve.
 
 1. **Core analysis and viewer.** Joint and mechanism model with R and P
    joints, position analysis for the four-bar and every slider variant,

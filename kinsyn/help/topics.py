@@ -11,7 +11,7 @@ TOC = [
         ("Tour of the window", "tutorials/01-tour.md"),
         ("Explore a template", "tutorials/02-explore-a-template.md"),
         ("Define a motion: poses, body, snapping", "tutorials/03-define-a-motion.md"),
-        ("Find a linkage for 2 or 3 poses", "tutorials/04-motion-generation.md"),
+        ("Find a linkage through 2 to 5 poses", "tutorials/04-motion-generation.md"),
     ]),
     ("Concepts", [
         ("Anatomy of a four-bar", "concepts/fourbar-anatomy.md"),
@@ -25,6 +25,7 @@ TOC = [
         ("Quick return and time ratio", "concepts/time-ratio.md"),
         ("Slider mechanisms", "concepts/slider-mechanisms.md"),
         ("Kinematic synthesis", "concepts/synthesis.md"),
+        ("Burmester curves and points", "concepts/burmester.md"),
     ]),
     ("Reference", [
         ("Tools and shortcuts", "reference/tools-and-shortcuts.md"),
@@ -90,6 +91,11 @@ TERMS = {
                      "concepts/synthesis.md"),
     "circuit-defect": ("Circuit defect", "The poses lie on separate pieces of the motion, so the input can't "
                        "move from one to the next without the linkage coming apart.", "concepts/synthesis.md"),
+    "center-point-curve": ("Center-point curve", "With 4 poses, the places a ground pivot can go. Each point "
+                           "on it has a matching moving pivot on the circle-point curve.",
+                           "concepts/burmester.md"),
+    "burmester-point": ("Burmester point", "With 5 poses, the few ground pivots that work for all of them: "
+                        "where two center-point curves cross.", "concepts/burmester.md"),
     "fixed-pivot": ("Fixed pivot", "A ground pivot you place yourself (Pivot tool, G). Every design the search "
                     "finds then uses it.", "tutorials/04-motion-generation.md"),
     "snapping": ("Snapping", "Placement that locks to the grid, existing points, alignment lines or 15° "

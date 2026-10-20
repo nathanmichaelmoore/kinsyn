@@ -57,7 +57,7 @@ designed on its own:
 So each side has a free choice. kinsyn tries many of them, pairs up the
 dyads, and checks every result. With 2 poses there is even more freedom;
 with 4 and 5 poses the choices shrink to curves and then to a handful of
-points (Burmester theory, coming next).
+points: see [Burmester curves and points](burmester.md).
 
 ## After solving
 

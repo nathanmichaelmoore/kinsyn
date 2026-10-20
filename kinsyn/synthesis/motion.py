@@ -24,7 +24,8 @@ import numpy as np
 from kinsyn.core.families import FourBar, InvertedSliderCrank, SliderCrank
 from kinsyn.core.target import point_in_polygon
 
-from .dyad import Dyad, Poses, pr_from_direction, resolve, rp_from_direction, rr_from_ground, rr_from_timing
+from . import burmester
+from .dyad import Dyad, Poses, resolve, rr_from_timing
 
 FAMILIES = {
     "fourbar": "Four-bar",
@@ -55,6 +56,7 @@ class Options:
     allow_change_point: bool = False
     grid: int = 11  # ground pivot candidates per side
     directions: int = 24  # slider / slide directions tried
+    curve_samples: int = 90  # points tried along a center-point curve (4 poses)
     max_results: int = 60
     budget: int = 3000  # most candidates checked in full per solve
 
@@ -113,6 +115,11 @@ class Result:
     evaluated: int = 0
     combinations: int = 0
     notes: list = field(default_factory=list)
+    # 4 and 5 poses: center-point / circle-point curves (burmester.Curves),
+    # Burmester points (ground pivots) and working slider directions.
+    curves: list = field(default_factory=list)
+    burmester_points: list = field(default_factory=list)
+    slider_dirs: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -361,19 +368,34 @@ def _region(poses: Poses, zones):
             poses.P.imag.min() - pad, poses.P.imag.max() + pad)
 
 
+def _ground_ok(p, zones):
+    allowed = [z.polygon for z in zones if z.allow]
+    return (not allowed or any(point_in_polygon(p, a) for a in allowed)) and \
+        not any(point_in_polygon(p, z.polygon) for z in zones if not z.allow)
+
+
 def ground_grid(poses: Poses, zones, n):
     x0, x1, y0, y1 = _region(poses, zones)
     xs, ys = np.linspace(x0, x1, n), np.linspace(y0, y1, n)
-    pts = [complex(x, y) for y in ys for x in xs]
-    allowed = [z.polygon for z in zones if z.allow]
-    banned = [z.polygon for z in zones if not z.allow]
-    return [p for p in pts if (not allowed or any(point_in_polygon(p, a) for a in allowed))
-            and not any(point_in_polygon(p, b) for b in banned)]
+    return [p for p in (complex(x, y) for y in ys for x in xs) if _ground_ok(p, zones)]
 
 
 def _tag(d: Dyad):
-    """Which fixed pivot a dyad would satisfy."""
-    return ("pin", d.G) if d.kind == "RR" else ("rail", d.angle) if d.kind == "PR" else None
+    """Which fixed pivot a dyad would satisfy: by its free choice, which can
+    differ from the dyad itself once snapped onto a Burmester curve."""
+    tag, choice = (d.source[0], d.source[1]) if d.source else (None, None)
+    if d.kind == "RR":
+        return ("pin", choice if tag in ("G", "timed") and choice is not None else d.G)
+    if d.kind == "PR":
+        return ("rail", choice if tag == "gamma" else d.angle)
+    return None
+
+
+def _dyad(poses, kind, choice, s=0.0):
+    """Dyad from a free choice; with 4+ poses the choice is snapped onto
+    what works first (see dyad.resolve)."""
+    tag = {"RR": "G", "PR": "gamma", "RP": "phi"}[kind]
+    return resolve(poses, Dyad(kind, source=(tag, choice, s)))
 
 
 def generate(poses: Poses, opts: Options, zones=(), fixed=(), betas=None):
@@ -384,32 +406,39 @@ def generate(poses: Poses, opts: Options, zones=(), fixed=(), betas=None):
     offsets = (0.0,) if n >= 3 else (-0.5, 0.0, 0.5)
     fixed_pins = [p.pos for p in fixed if p.slider_angle is None]
     fixed_rails = [p.slider_angle for p in fixed if p.slider_angle is not None]
-    grid = [] if len(fixed) >= 2 else ground_grid(poses, zones, opts.grid)
-    dirs = list(np.linspace(0, math.pi, opts.directions, endpoint=False))
+    free = len(fixed) < 2
     want = set(opts.families)
     use_pr = "slider_crank" in want
-    use_rp = "inverted_slider" in want and len(fixed) < 2
+    use_rp = "inverted_slider" in want and free
+    if n >= 4:
+        # Only points of the center-point curve (4 poses) or the Burmester
+        # points (5 poses) work, and only a few slider directions.
+        if not free:
+            grid = []
+        elif n == 4:
+            curves = burmester.curves(poses, burmester.default_box(poses, zones))
+            grid = [g for g in burmester.sample_curve(curves, opts.curve_samples)
+                    if _ground_ok(g, zones)]
+        else:
+            grid = [d.G for d in burmester.burmester_points(poses)]
+        dirs = {k: burmester.slider_directions(poses, k) if free else [] for k in ("PR", "RP")}
+    else:
+        grid = ground_grid(poses, zones, opts.grid) if free else []
+        sweep = list(np.linspace(0, math.pi, opts.directions, endpoint=False)) if free else []
+        dirs = {"PR": sweep, "RP": sweep}
 
-    rr = []
-    for G in fixed_pins + grid:
-        for s in offsets:
-            d = rr_from_ground(poses, G, s)
-            if d is not None:
-                rr.append(d)
-    pr = []
-    if use_pr:
-        for g in fixed_rails + ([] if len(fixed) >= 2 else dirs):
+    def make(kind, choices):
+        out = []
+        for c in choices:
             for s in offsets:
-                d = pr_from_direction(poses, g, s)
+                d = _dyad(poses, kind, c, s)
                 if d is not None:
-                    pr.append(d)
-    rp = []
-    if use_rp:
-        for phi in dirs:
-            for s in offsets:
-                d = rp_from_direction(poses, phi, s)
-                if d is not None:
-                    rp.append(d)
+                    out.append(d)
+        return out
+
+    rr = make("RR", fixed_pins + grid)
+    pr = make("PR", fixed_rails + dirs["PR"]) if use_pr else []
+    rp = make("RP", dirs["RP"]) if use_rp else []
     outputs = {"RR": rr, "PR": pr, "RP": rp}
 
     if betas is not None:
@@ -488,7 +517,7 @@ def rank_key(c: Candidate):
 
 
 def solve_motion(keyframes, opts: Options | None = None, zones=(), fixed=(), should_stop=None):
-    """Motion generation for the keyframes (2 or 3 exact poses).
+    """Motion generation for the keyframes (2 to 5 exact poses).
 
     `should_stop()` is polled now and then; when it returns True the solve
     gives up and returns None (a newer solve has replaced it)."""
@@ -498,15 +527,18 @@ def solve_motion(keyframes, opts: Options | None = None, zones=(), fixed=(), sho
     if n < 2:
         res.method = "Add at least 2 poses"
         return res
-    if n > 3:
-        res.method = f"{n} poses: Burmester synthesis (4 and 5 poses) is not built yet"
+    if n > 5:
+        res.method = f"{n} poses: more than 5 exact poses needs the optimizer (a later milestone)"
         return res
     if not all(k.exact for k in keyframes):
-        res.notes.append("Tolerances are ignored: the dyad solver hits every pose exactly.")
+        res.notes.append("Tolerances are ignored: the exact solvers hit every pose exactly.")
     poses = Poses.of(keyframes)
     rot = prescribed_rotations(keyframes)
     betas = rot if all(r is not None for r in rot) else None
-    if betas is None and any(r is not None for r in rot[1:]):
+    if n >= 4 and any(r is not None for r in rot[1:]):
+        res.notes.append(f"Timing is ignored: with {n} poses there is no exact solution with prescribed timing.")
+        betas = None
+    elif betas is None and any(r is not None for r in rot[1:]):
         res.notes.append("Timing is ignored: prescribe it for every pose, or for none.")
     if len(fixed) > 2:
         res.notes.append("Only the first two fixed pivots are used.")
@@ -515,7 +547,12 @@ def solve_motion(keyframes, opts: Options | None = None, zones=(), fixed=(), sho
         res.method = f"{n} exact poses with prescribed timing → " + (
             "unique input dyad" if n >= 3 else "input dyad for each ground pivot")
     else:
-        res.method = f"{n} exact poses → " + ("dyad solve" if n >= 3 else "closed-form dyads")
+        res.method = f"{n} exact poses → " + {2: "closed-form dyads", 3: "dyad solve",
+                                              4: "Burmester curves", 5: "Burmester points"}[n]
+    if n >= 4:
+        _burmester_info(res, poses, zones)
+        if should_stop is not None and should_stop():
+            return None
 
     inputs, outputs = generate(poses, opts, zones, fixed, betas)
     pairs = _pairs(inputs, outputs, set(opts.families), fixed)
@@ -548,6 +585,24 @@ def solve_motion(keyframes, opts: Options | None = None, zones=(), fixed=(), sho
     bad.sort(key=lambda c: (len(c.reasons), rank_key(c)))
     res.rejected = _distinct(bad, scale, 80)
     return res
+
+
+def _burmester_info(res, poses, zones):
+    """Curves, points and slider directions, for drawing and the status line."""
+    n = len(poses)
+    if n == 4:
+        res.curves = [burmester.curves(poses, burmester.default_box(poses, zones))]
+    else:
+        box = burmester.default_box(poses, zones)
+        res.curves = [burmester.curves(Poses(poses.P[list(ix)], poses.th[list(ix)]), box)
+                      for ix in ((0, 1, 2, 3), (0, 1, 2, 4))]
+        res.burmester_points = [d.G for d in burmester.burmester_points(poses)]
+        k = len(res.burmester_points)
+        res.method += f" ({k} found)"
+        if k == 0:
+            res.notes.append("These 5 poses have no real Burmester points, so no pin-jointed four-bar "
+                             "hits them all exactly. Try moving a pose, or use 4 poses.")
+    res.slider_dirs = {k: burmester.slider_directions(poses, k) for k in ("PR", "RP")}
 
 
 def resolve_candidate(cand: Candidate, keyframes, opts: Options, zones=()):

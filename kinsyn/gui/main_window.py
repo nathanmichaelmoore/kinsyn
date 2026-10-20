@@ -32,6 +32,7 @@ from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
 from .settings import DEFAULTS, PreferencesDialog, Settings, apply_app_font, clamp_font
+from .burmester_layer import BurmesterLayer
 from .synthesis_panel import SynthesisPanel
 from .view import MechanismView
 
@@ -118,8 +119,11 @@ class MainWindow(QtWidgets.QMainWindow):
         tscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.target_dock = self._dock("Target", tscroll, QtCore.Qt.RightDockWidgetArea)
         self.tabifyDockWidget(mech_dock, self.target_dock)
+        self.burmester = BurmesterLayer(self.view)
         self.synth = SynthesisPanel(self.doc, self.mu_limit)
         self.synth.designSelected.connect(self.load_design)
+        self.synth.resultChanged.connect(self._on_synthesis_result)
+        self.synth.show_curves.toggled.connect(self.burmester.set_visible)
         self.synth.linkActivated.connect(self.open_help_link)
         sscroll = QtWidgets.QScrollArea()
         sscroll.setWidget(self.synth)
@@ -445,7 +449,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   triggered=lambda: self.show_help("tutorials/02-explore-a-template.md")))
         h.addAction(QtGui.QAction("Tutorial: define a motion (poses, body, snapping)", self,
                                   triggered=lambda: self.show_help("tutorials/03-define-a-motion.md")))
-        h.addAction(QtGui.QAction("Tutorial: find a linkage for 2 or 3 poses", self,
+        h.addAction(QtGui.QAction("Tutorial: find a linkage through 2 to 5 poses", self,
                                   triggered=lambda: self.show_help("tutorials/04-motion-generation.md")))
         h.addSeparator()
         h.addAction(QtGui.QAction("Concepts: anatomy of a four-bar", self,
@@ -591,6 +595,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_mech_action.setChecked(True)
         self.recompute(autorange=picked)
         self.mark_dirty()
+
+    def _on_synthesis_result(self, res):
+        from kinsyn.synthesis.dyad import Poses
+
+        ks = self.doc.target.keyframes
+        self.burmester.set_result(res, Poses.of(ks) if ks else None)
 
     def set_body_angle(self, angle):
         self.body_angle = angle
@@ -917,6 +927,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layers_panel.set_units(unit)
         self.underlays.rebuild_all()
         self.layer.redraw()
+        self.burmester.set_result(self.burmester.result, self.burmester.poses)
         self.recompute()
 
     def save_to_library(self):

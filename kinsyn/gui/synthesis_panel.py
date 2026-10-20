@@ -69,6 +69,7 @@ def same_design(a, b):
 
 class SynthesisPanel(QtWidgets.QWidget):
     designSelected = QtCore.Signal(object, bool)  # candidate, newly picked (vs. tracked)
+    resultChanged = QtCore.Signal(object)  # motion.Result or None
     linkActivated = QtCore.Signal(str)
 
     def __init__(self, doc, mu_limit):
@@ -153,6 +154,22 @@ class SynthesisPanel(QtWidgets.QWidget):
         self.status.setWordWrap(True)
         self.status.setTextFormat(QtCore.Qt.RichText)
         lay.addWidget(self.status)
+        # 4 and 5 poses: what the curves on the canvas mean.
+        self.show_curves = QtWidgets.QCheckBox("Show Burmester curves on the canvas", checked=True)
+        self.show_curves.setToolTip(tooltip("center-point-curve"))
+        lay.addWidget(self.show_curves)
+        self.legend = QtWidgets.QLabel(
+            "<span style='color:#ffb74d'>━</span> center-point curve: where a ground pivot can go · "
+            "<span style='color:#66bb6a'>━</span> used by valid designs · "
+            "<span style='color:#80cbc4'>┅</span> circle-point curve: the matching moving pivots · "
+            "<span style='color:#ffd54f'>★</span> Burmester points · "
+            "<span style='color:#f48fb1'>■</span> slider options. "
+            "Place a fixed pivot (G) on the curve to choose it yourself.")
+        self.legend.setWordWrap(True)
+        self.legend.setTextFormat(QtCore.Qt.RichText)
+        lay.addWidget(self.legend)
+        self.show_curves.setVisible(False)
+        self.legend.setVisible(False)
 
         self.tabs = QtWidgets.QTabBar()
         self.tabs.addTab("Designs")
@@ -268,6 +285,10 @@ class SynthesisPanel(QtWidgets.QWidget):
 
     def _show_result(self, res):
         self.result = res
+        has_curves = res is not None and bool(res.curves)
+        self.show_curves.setVisible(has_curves)
+        self.legend.setVisible(has_curves)
+        self.resultChanged.emit(res)
         if res is not None:
             crashlog.breadcrumb(f"synthesis: {res.method}; {len(res.solutions)} designs, "
                                 f"{res.evaluated} combinations")

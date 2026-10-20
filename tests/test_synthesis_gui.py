@@ -72,3 +72,31 @@ def test_panel_solves_sorts_and_tracks(app):
 
     panel.tabs.setCurrentIndex(1)
     assert panel.table.rowCount() == len(panel.result.rejected)
+
+
+def test_four_poses_draw_burmester_curves(app):
+    from kinsyn.gui.burmester_layer import BurmesterLayer
+    from kinsyn.gui.view import MechanismView
+    from kinsyn.synthesis.dyad import Poses
+
+    doc = TargetDocument()
+    panel = SynthesisPanel(doc, np.radians(40))
+    view = MechanismView()
+    layer = BurmesterLayer(view)
+    fb = FourBar(A0=0j, B0=100 + 0j, a=40, b=120, c=80, P=60 + 40j)
+    f = fb.solve(np.radians([40, 80, 120, 170]))
+    ang = fb.coupler_angle(f)
+    doc.edit("poses", lambda t: t.keyframes.extend(Keyframe(complex(p), float(a))
+                                                    for p, a in zip(f.points["P"], ang)))
+    panel.resultChanged.connect(lambda res: layer.set_result(res, Poses.of(doc.target.keyframes)))
+    panel.solve()
+    assert wait(app, lambda: panel.result is not None and panel.result.evaluated > 0)
+    assert panel.result.curves and panel.legend.isVisibleTo(panel)
+    xs, _ = layer.center.getData()
+    assert xs is not None and len(xs) > 50
+    ux, _ = layer.usable.getData()
+    assert np.isfinite(ux).any()  # some of the curve is used by valid designs
+    curves, points = layer.snap_geometry()
+    assert curves and not points
+    layer.set_visible(False)
+    assert layer.snap_geometry() == ([], [])

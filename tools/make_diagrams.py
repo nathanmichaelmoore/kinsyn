@@ -418,8 +418,50 @@ def dyads():
     svg.save("dyads.svg")
 
 
+def burmester_curves():
+    """4 poses: the center-point curve, its circle points, and one design
+    picked from it."""
+    from kinsyn.synthesis import burmester as bm
+    from kinsyn.synthesis.dyad import Poses, rr_from_ground
+
+    m = FourBar(A0=0j, B0=100 + 0j, a=40, b=120, c=80, P=60 + 40j)
+    f = m.solve(np.radians([40, 80, 120, 170]))
+    ks = [Keyframe(complex(p), float(a)) for p, a in zip(f.points["P"], m.coupler_angle(f))]
+    poses = Poses.of(ks)
+    box = (-90, 200, -55, 190)  # stop above the caption
+    c = bm.curves(poses, box)
+    svg = Svg(660, 470, (-80, 190), (-95, 175))
+    for line in c.center:
+        svg.line(line, COUPLER, 2.5)
+    for line in c.circle:
+        pts = line[np.isfinite(line)]
+        if len(pts) > 1:
+            svg.line(pts, CURVE, 1.8, dash="6 5")
+    body = Body([[-14 - 7j, 26 - 7j, 26 + 8j, -14 + 8j]])
+    for i, k in enumerate(ks):
+        for pl in body.at(k.pos, k.angle):
+            svg.poly(list(pl), GHOST, 0.10, 1.8)
+        svg.dot(k.pos, GHOST, 5)
+        svg.text(k.pos, str(i + 1), GHOST, dx=4, dy=-12, weight="bold")
+    moving = []
+    for G, name in ((m.A0, "A"), (m.B0, "B")):
+        M = poses.world(rr_from_ground(poses, G).m)
+        moving.append(M[0])
+        svg.line([G, M[0]], LINK, 4)
+        svg.ground(G)
+        svg.text(G, f"{name}0", INK, dx=-22 if name == "A" else 24, dy=6, weight="bold")
+    svg.poly([moving[0], moving[1], ks[0].pos], COUPLER, 0.12, 2)
+    for M in moving:
+        svg.pin(M)
+    svg.label(20, 410, "Orange: the center-point curve, every place a ground pivot can go for these 4 poses.",
+              MUTED, 13)
+    svg.label(20, 430, "Blue dashed: the circle-point curve, the matching moving pivots (at pose 1).", MUTED, 13)
+    svg.label(20, 450, "Any two points of the orange curve (here A0 and B0) make a four-bar.", MUTED, 13)
+    svg.save("burmester-curves.svg")
+
+
 if __name__ == "__main__":
     for fn in (anatomy, transmission, grashof, toggle, slider, assemblies, poses_body, snapping, motion_plots,
-               mech_advantage, timeline, dyads):
+               mech_advantage, timeline, dyads, burmester_curves):
         fn()
     print("wrote", sorted(p.name for p in OUT.glob("*.svg")))

@@ -2,7 +2,7 @@
 
 The **Target** is the motion you *want*. The **Synthesis** tab then finds
 linkages that produce it: see
-[Find a linkage for 2 or 3 poses](04-motion-generation.md). While you set
+[Find a linkage through 2 to 5 poses](04-motion-generation.md). While you set
 up the target, you can hide the mechanism with **View → Show mechanism**.
 
 Start with **File → New project** for a clean canvas.

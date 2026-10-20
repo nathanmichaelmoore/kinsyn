@@ -31,18 +31,48 @@ def nice_step(approx_mm, unit):
     return m * 10 ** exp
 
 
+def nearest_on_polylines(p, lines):
+    """Nearest point to p on any of the polylines (NaN gaps allowed), and
+    its distance. (None, inf) if there are none."""
+    best, best_d = None, math.inf
+    for line in lines:
+        z = np.asarray(line, complex)
+        if len(z) < 2:
+            continue
+        a, b = z[:-1], z[1:]
+        ok = np.isfinite(a) & np.isfinite(b)
+        a, b = a[ok], b[ok]
+        if not len(a):
+            continue
+        ab = b - a
+        L2 = np.abs(ab) ** 2
+        with np.errstate(invalid="ignore", divide="ignore"):
+            t = np.clip(np.where(L2 > 0, ((p - a) * np.conj(ab)).real / L2, 0.0), 0, 1)
+        q = a + t * ab
+        d = np.abs(q - p)
+        i = int(np.argmin(d))
+        if d[i] < best_d:
+            best, best_d = complex(q[i]), float(d[i])
+    return best, best_d
+
+
 def snap_point(p, *, tol, points=(), grid_step=None, ref=None, angle_step=None,
-               objects=True, align=True):
+               objects=True, align=True, curves=(), curve_label="curve"):
     """Snap raw point `p` (complex, mm).
 
-    Priority: object points within `tol` > angle constraint from `ref` (when
-    `angle_step` is given) > alignment with existing points (per axis) > grid."""
+    Priority: object points within `tol` > `curves` (polylines) within `tol`
+    > angle constraint from `ref` (when `angle_step` is given) > alignment
+    with existing points (per axis) > grid."""
     pts = np.asarray(list(points), complex)
     if objects and len(pts):
         d = np.abs(pts - p)
         i = int(np.argmin(d))
         if d[i] <= tol:
             return SnapResult(complex(pts[i]), "object", label="point")
+    if objects and curves:
+        q, d = nearest_on_polylines(p, curves)
+        if q is not None and d <= tol:
+            return SnapResult(q, "object", label=curve_label)
 
     if ref is not None and angle_step:
         v = p - ref

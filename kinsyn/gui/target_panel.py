@@ -36,7 +36,7 @@ class TargetPanel(QtWidgets.QWidget):
         lay.addLayout(top)
         self.notice = QtWidgets.QLabel(
             "<b>What this panel does:</b> describe the motion you <i>want</i> (poses, body, timing). "
-            "The <b>Synthesis</b> tab then finds linkages that produce it (2 or 3 poses for now). "
+            "The <b>Synthesis</b> tab then finds linkages that produce it (2 to 5 exact poses). "
             "<a href='help:tutorials/03-define-a-motion.md'>How to use the target editor</a>")
         self.notice.setWordWrap(True)
         self.notice.setOpenExternalLinks(False)

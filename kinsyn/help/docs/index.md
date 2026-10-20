@@ -16,7 +16,7 @@ to see one.
    ready-made mechanism, change its dimensions and read the analysis.
 3. **[Define a motion](tutorials/03-define-a-motion.md)**: use the pose,
    body, curve and snapping tools to describe the motion you want.
-4. **[Find a linkage for 2 or 3 poses](tutorials/04-motion-generation.md)**:
+4. **[Find a linkage through 2 to 5 poses](tutorials/04-motion-generation.md)**:
    let kinsyn design linkages that carry your part through its poses.
 
 ## Learn the ideas

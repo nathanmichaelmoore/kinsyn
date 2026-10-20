@@ -79,8 +79,10 @@ class EditorContext:
             return SnapResult(p)
         mpp = self.layer.mm_per_px()
         angle_step = ANGLE_STEP if (ref is not None and mods & QtCore.Qt.ShiftModifier) else None
-        return snap_point(p, tol=SNAP_PX * mpp, points=self.snap_points(exclude),
-                          grid_step=nice_step(GRID_PX * mpp, self.unit), ref=ref, angle_step=angle_step)
+        curves, special = self.w.burmester.snap_geometry()
+        return snap_point(p, tol=SNAP_PX * mpp, points=self.snap_points(exclude) + special,
+                          grid_step=nice_step(GRID_PX * mpp, self.unit), ref=ref, angle_step=angle_step,
+                          curves=curves, curve_label="center-point curve")
 
     def snap_angle(self, ang):
         if self.modifiers() & QtCore.Qt.ShiftModifier:

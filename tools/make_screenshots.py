@@ -10,6 +10,7 @@ import math
 import sys
 from pathlib import Path
 
+import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -109,6 +110,42 @@ def main():
              (5, w.synth.fix_btn, (0.05, 0.5)), (6, w.view, (0.5, 0.08))]
     callouts(img, w, marks).save(str(OUT / "synthesis.png"))
     print("wrote", OUT / "synthesis.png")
+
+    # Four poses: the Burmester curves on the canvas.
+    def fill4(t):
+        t.keyframes.append(Keyframe(120 + 90j, math.radians(95)))
+    w.doc.edit("Fourth pose", fill4)
+    w.synth.solve()
+    t0 = time.time()
+    while (w.synth.result is None or not w.synth.result.curves or not w.synth.result.evaluated) \
+            and time.time() - t0 < 60:
+        app.processEvents()
+        time.sleep(0.01)
+    w.synth.table.selectRow(next(i for i, c in enumerate(w.synth.rows) if c.family == "fourbar"))
+    w.view.autorange()
+    for _ in range(10):
+        app.processEvents()
+    res = w.synth.result
+    img = w.grab().toImage()
+
+    def on_canvas(z):
+        """(widget, relative position) of a point in mm on the canvas."""
+        vb = w.view.getViewBox()
+        sp = vb.mapViewToScene(QtCore.QPointF(z.real / w.view.factor, z.imag / w.view.factor))
+        vp = w.view.mapFromScene(sp)
+        return w.view, (vp.x() / w.view.width(), vp.y() / w.view.height())
+
+    xr, yr = w.view.getViewBox().viewRange()
+    inside = lambda z: xr[0] < z.real < xr[1] and yr[0] < z.imag < yr[1]
+    centre = next(z for line in res.curves[0].center for z in line[len(line) // 3:] if inside(z))
+    circle = next(z for line in res.curves[0].circle for z in line[len(line) // 2:] if np.isfinite(z) and inside(z))
+    gx, gy = w.burmester.usable.getData()
+    usable = (gx + 1j * gy) * w.view.factor
+    green = next(z for z in usable if np.isfinite(z) and inside(z))
+    marks = [(1, *on_canvas(centre)), (2, *on_canvas(circle)), (3, *on_canvas(green)),
+             (4, w.synth.show_curves, (0.97, 0.5)), (5, w.synth.legend, (0.97, 0.85))]
+    callouts(img, w, marks).save(str(OUT / "burmester.png"))
+    print("wrote", OUT / "burmester.png")
 
 
 if __name__ == "__main__":

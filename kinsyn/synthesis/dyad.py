@@ -20,7 +20,7 @@ x-axis along the keyframe angle.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -71,30 +71,63 @@ class Dyad:
         return {"RR": "pin-pin", "PR": "slider on ground", "RP": "swivel"}[self.kind]
 
 
-def _rows_re(c):
-    """Row for Re[c z] as a linear form in (z.real, z.imag)."""
-    return np.array([c.real, -c.imag])
+# --------------------------------------------------------------------------
+# The linear systems. Each takes the free choice (possibly an array of them)
+# and returns A (..., n-1, 2) and b (..., n-1) for the unknown (x, y), one
+# row per pose after the first. With 4+ poses there are more rows than
+# unknowns, and a dyad exists only where the system is consistent: that is
+# what the Burmester curves are.
+
+def _re_rows(c):
+    """Rows for Re[c z] as linear forms in (z.real, z.imag)."""
+    return np.stack([c.real, -c.imag], -1)
 
 
-def _rows_im(c):
-    """Row for Im[c z]."""
-    return np.array([c.imag, c.real])
+def _im_rows(c):
+    """Rows for Im[c z]."""
+    return np.stack([c.imag, c.real], -1)
 
 
-def _solve_linear(rows, rhs, ref, s=0.0, scale=1.0):
-    """Solve rows @ (x, y) = rhs for a complex z.
+def rr_system(poses: Poses, G):
+    """Moving pivot m for ground pivot G: |M_j - G| equal for all poses.
+    The |m|^2 terms cancel, so each row is linear in m (and affine in G)."""
+    u = poses.P - np.asarray(G, complex)[..., None]
+    a = poses.a
+    c = 2 * (np.conj(u[..., 1:]) * a[1:] - np.conj(u[..., :1]) * a[0])
+    b = np.abs(u[..., :1]) ** 2 - np.abs(u[..., 1:]) ** 2
+    return _re_rows(c), b
 
-    Two independent rows: the unique solution. One row (two poses): the
-    point on the solution line nearest `ref`, moved by `s` along the line.
-    Returns None when the system is degenerate."""
-    A = np.asarray(rows, float).reshape(-1, 2)
-    b = np.asarray(rhs, float)
+
+def pr_system(poses: Poses, gamma):
+    """Moving pivot m whose positions lie on one line of direction gamma."""
+    w = np.exp(-1j * np.asarray(gamma, float))[..., None]
+    a = poses.a
+    return _im_rows((a[1:] - a[0]) * w), -((poses.P[1:] - poses.P[0]) * w).imag
+
+
+def rp_system(poses: Poses, phi):
+    """Swivel G at equal distance from every position of a body line with
+    direction phi (body frame)."""
+    v = np.exp(1j * (np.asarray(phi, float)[..., None] + poses.th))
+    cv = np.conj(v)
+    b = (poses.P[1:] * cv[..., 1:]).imag - (poses.P[0] * cv[..., :1]).imag
+    return _im_rows(cv[..., 1:] - cv[..., :1]), b
+
+
+def _solve_linear(A, b, ref, s=0.0, scale=1.0):
+    """Solve A @ (x, y) = b for a complex z.
+
+    Two or more rows: the (least-squares) solution; the caller checks that
+    it really fits when there are more rows than unknowns. One row (two
+    poses): the point on the solution line nearest `ref`, moved by `s` along
+    the line. Returns None when the system is degenerate."""
+    A = np.asarray(A, float).reshape(-1, 2)
+    b = np.asarray(b, float)
     if len(A) >= 2:
-        A2, b2 = A[:2], b[:2]
-        det = A2[0, 0] * A2[1, 1] - A2[0, 1] * A2[1, 0]
-        if abs(det) < DEGENERATE * max(1.0, np.abs(A2).max()) ** 2:
+        sv = np.linalg.svd(A, compute_uv=False)
+        if sv[-1] < DEGENERATE * max(1.0, sv[0]):
             return None
-        x, y = np.linalg.solve(A2, b2)
+        x, y = np.linalg.lstsq(A, b, rcond=None)[0]
         return complex(x, y)
     r = A[0]
     nr = float(r @ r)
@@ -108,19 +141,22 @@ def _solve_linear(rows, rhs, ref, s=0.0, scale=1.0):
     return complex(p[0], p[1])
 
 
+FIT_TOL = 1e-6  # relative to the size of the problem
+
+
+def _fits(spread, poses, *sizes):
+    return spread <= FIT_TOL * max((poses.scale(), *sizes))
+
+
 def rr_from_ground(poses: Poses, G, s=0.0):
     """RR dyad with ground pin G: the body point that stays at a constant
-    distance from G (|M_j - G| equal for all poses). Linear in m."""
-    u = poses.P - G
-    a = poses.a
-    rows, rhs = [], []
-    for j in range(1, min(len(poses), 3)):
-        c = 2 * (np.conj(u[j]) * a[j] - np.conj(u[0]) * a[0])
-        rows.append(_rows_re(c))
-        rhs.append(abs(u[0]) ** 2 - abs(u[j]) ** 2)
-    # Two poses: start from the point of the solution line nearest the body origin.
-    m = _solve_linear(rows, rhs, 0j, s, poses.scale())
+    distance from G. With 4 or more poses, G must lie on the center-point
+    curve (otherwise None)."""
+    m = _solve_linear(*rr_system(poses, G), 0j, s, poses.scale())
     if m is None:
+        return None
+    r = np.abs(poses.world(m) - G)
+    if len(poses) > 3 and not _fits(np.ptp(r), poses, r.max()):
         return None
     return Dyad("RR", G=complex(G), m=m, source=("G", complex(G), s))
 
@@ -152,15 +188,13 @@ def rr_from_timing(poses: Poses, betas, G=None):
 
 def pr_from_direction(poses: Poses, gamma, s=0.0):
     """PR dyad with rail direction gamma: the body point whose positions
-    all lie on one line of that direction. Linear in m."""
-    w = np.exp(-1j * gamma)
-    a = poses.a
-    rows, rhs = [], []
-    for j in range(1, min(len(poses), 3)):
-        rows.append(_rows_im((a[j] - a[0]) * w))
-        rhs.append(-((poses.P[j] - poses.P[0]) * w).imag)
-    m = _solve_linear(rows, rhs, 0j, s, poses.scale())
+    all lie on one line of that direction. With 4 or more poses only a few
+    directions work (Ball points); otherwise None."""
+    m = _solve_linear(*pr_system(poses, gamma), 0j, s, poses.scale())
     if m is None:
+        return None
+    M = poses.world(m)
+    if len(poses) > 3 and not _fits(np.ptp(((M - M[0]) * np.exp(-1j * gamma)).imag), poses):
         return None
     return Dyad("PR", m=m, angle=float(gamma), source=("gamma", float(gamma), s))
 
@@ -169,27 +203,36 @@ def rp_from_direction(poses: Poses, phi, s=0.0):
     """RP dyad whose body slides along direction phi (body frame) through
     a ground swivel G: G keeps the same distance from the slide line in
     every pose. Linear in G, and independent of where the line sits on the
-    body (that only changes the offset)."""
-    v = np.exp(1j * (phi + poses.th))
-    rows, rhs = [], []
-    for j in range(1, min(len(poses), 3)):
-        rows.append(_rows_im(np.conj(v[j]) - np.conj(v[0])))
-        rhs.append((poses.P[j] * np.conj(v[j])).imag - (poses.P[0] * np.conj(v[0])).imag)
-    G = _solve_linear(rows, rhs, complex(np.mean(poses.P)), s, poses.scale())
+    body (that only changes the offset). With 4 or more poses only a few
+    directions work; otherwise None."""
+    G = _solve_linear(*rp_system(poses, phi), complex(np.mean(poses.P)), s, poses.scale())
     if G is None:
+        return None
+    v = np.exp(1j * (phi + poses.th))
+    if len(poses) > 3 and not _fits(np.ptp(((G - poses.P) * np.conj(v)).imag), poses):
         return None
     return Dyad("RP", G=G, angle=float(phi), source=("phi", float(phi), s))
 
 
 def resolve(poses: Poses, dyad: Dyad, betas=None):
-    """Re-solve a dyad from the same free choices for new poses."""
+    """Re-solve a dyad from the same free choices for new poses. With 4 or
+    5 poses the choice is first moved onto what works there (the
+    center-point curve, a Burmester point, a working slider direction); the
+    dyad keeps the original choice as its source, so it can be followed."""
+    from . import burmester
+
     tag = dyad.source[0] if dyad.source else None
+    d = None
     if tag == "G":
-        return rr_from_ground(poses, dyad.source[1], dyad.source[2])
-    if tag == "timed":
-        return rr_from_timing(poses, betas, dyad.source[1]) if betas is not None else None
-    if tag == "gamma":
-        return pr_from_direction(poses, dyad.source[1], dyad.source[2])
-    if tag == "phi":
-        return rp_from_direction(poses, dyad.source[1], dyad.source[2])
-    return None
+        G = burmester.snap_ground(poses, dyad.source[1])
+        d = None if G is None else rr_from_ground(poses, G, dyad.source[2])
+    elif tag == "timed":
+        d = rr_from_timing(poses, betas, dyad.source[1]) if betas is not None else None
+    elif tag in ("gamma", "phi"):
+        kind = "PR" if tag == "gamma" else "RP"
+        ang = burmester.snap_direction(poses, kind, dyad.source[1])
+        fn = pr_from_direction if kind == "PR" else rp_from_direction
+        d = None if ang is None else fn(poses, ang, dyad.source[2])
+    if d is None:
+        return None
+    return replace(d, source=dyad.source)
