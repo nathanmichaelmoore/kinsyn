@@ -90,6 +90,26 @@ def main():
     callouts(img, w, marks).save(str(OUT / "tour.png"))
     print("wrote", OUT / "tour.png")
 
+    # Synthesis tab with a design picked for the same three poses.
+    import time
+    w.set_tool("select")
+    w.synth_dock.raise_()
+    w.synth.solve()
+    t0 = time.time()
+    while (w.synth.result is None or not w.synth.result.evaluated) and time.time() - t0 < 60:
+        app.processEvents()
+        time.sleep(0.01)
+    w.synth.table.selectRow(next(i for i, c in enumerate(w.synth.rows) if c.family == "fourbar"))
+    w.seek(len(w.circuit.q) // 3)
+    for _ in range(10):
+        app.processEvents()
+    img = w.grab().toImage()
+    marks = [(1, w.synth.method, (0.9, 0.5)), (2, w.synth.input_motion, (0.97, 0.5)),
+             (3, w.synth.tabs, (0.97, 0.5)), (4, w.synth.table, (0.97, 0.12)),
+             (5, w.synth.fix_btn, (0.05, 0.5)), (6, w.view, (0.5, 0.08))]
+    callouts(img, w, marks).save(str(OUT / "synthesis.png"))
+    print("wrote", OUT / "synthesis.png")
+
 
 if __name__ == "__main__":
     main()

@@ -525,8 +525,23 @@ on both, whatever the option is set to.
 
 ## Milestones
 
-Status (2026-09-30): milestones 1 and 2 are done, plus help and docs,
-preferences and crash diagnostics. Milestone 3 is next.
+Status (2026-10-19): milestones 1, 2 and 3 are done, plus help and docs,
+preferences and crash diagnostics. Milestone 4 is next.
+
+Milestone 3 as built (`kinsyn/synthesis/`, Synthesis tab):
+- Dyads: pin-pin (from a ground pivot), slider on ground (from a rail
+  direction) and swivel (from a slide direction), each a small linear solve.
+  Paired into four-bars, slider-cranks (crank or slider input) and inverted
+  slider-cranks (crank or cylinder input). The trammel (two sliders) is not
+  generated yet.
+- Prescribed timing on every pose fixes the input crank (standard-form dyad
+  equations). Partial timing is ignored, with a note.
+- Every candidate is re-analysed: round trip, branch / order / circuit
+  defects, transmission angle between the first and last pose, input-motion
+  option, change point, link ratio, zones. Rejected designs keep their reason.
+- Live: the picked design is re-solved from the same free choices on every
+  edit (and follows dragged fixed pivots); the full search re-runs in a
+  background thread. Tolerances are ignored by these exact solvers.
 
 1. **Core analysis and viewer.** Joint and mechanism model with R and P
    joints, position analysis for the four-bar and every slider variant,

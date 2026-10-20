@@ -8,25 +8,11 @@ import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from kinsyn.core.target import resolved_times
+
 FREE = QtGui.QColor("#b39ddb")
 FIXED = QtGui.QColor("#ffd54f")
 PLAYHEAD = QtGui.QColor("#f0a04b")
-
-
-def resolved_times(keyframes):
-    """Input angle (rad) for every keyframe, or None for free ones."""
-    out, prev = [], None
-    for k in keyframes:
-        if k.timing == "absolute":
-            prev = k.t
-        elif k.timing == "relative" and prev is not None:
-            prev = prev + k.t
-        else:
-            prev = None if k.timing == "free" else prev
-            out.append(None)
-            continue
-        out.append(prev)
-    return out
 
 
 def display_times(keyframes):
@@ -64,6 +50,7 @@ class Timeline(QtWidgets.QWidget):
         super().__init__()
         self.doc = doc
         self.playhead = None
+        self.solved = None  # input angle at each keyframe for the design on the canvas
         self.drag = None
         self.setMinimumHeight(46)
         self.setMouseTracking(True)
@@ -71,6 +58,18 @@ class Timeline(QtWidgets.QWidget):
                         "right-click to make it free / absolute / relative.")
         doc.changed.connect(self.update)
         doc.selectionChanged.connect(self.update)
+
+    def set_solved(self, angles):
+        """Where the current design actually reaches each keyframe (free
+        markers are drawn there), or None."""
+        self.solved = None if angles is None else [float(a) for a in angles]
+        self.update()
+
+    def _shown(self, ks):
+        out = display_times(ks)
+        if self.solved is not None and len(self.solved) == len(ks):
+            out = [s if k.timing == "free" else a for k, a, s in zip(ks, out, self.solved)]
+        return out
 
     # --- geometry --------------------------------------------------------
     def _bar(self):
@@ -87,7 +86,7 @@ class Timeline(QtWidgets.QWidget):
 
     def _marker_at(self, x):
         best = None
-        for i, a in enumerate(display_times(self.doc.target.keyframes)):
+        for i, a in enumerate(self._shown(self.doc.target.keyframes)):
             d = abs(self._x(a) - x)
             if d < 8 and (best is None or d < best[0]):
                 best = (d, i)
@@ -115,7 +114,7 @@ class Timeline(QtWidgets.QWidget):
             p.drawLine(QtCore.QPointF(x, r.bottom()), QtCore.QPointF(x, r.bottom() + 3))
             p.drawText(QtCore.QRectF(x - 20, r.bottom() + 3, 40, 14), QtCore.Qt.AlignCenter, f"{deg}°")
         ks = self.doc.target.keyframes
-        for i, (k, a) in enumerate(zip(ks, display_times(ks))):
+        for i, (k, a) in enumerate(zip(ks, self._shown(ks))):
             x = self._x(a)
             color = FIXED if k.timing != "free" else FREE
             sel = k.id == self.doc.selected
@@ -181,7 +180,7 @@ class Timeline(QtWidgets.QWidget):
     def set_mode(self, kid, mode):
         ks = self.doc.target.keyframes
         i = self.doc.target.index_of(kid)
-        shown = display_times(ks)[i]
+        shown = self._shown(ks)[i]
         prev = resolved_times(ks)[i - 1] if i > 0 else None
 
         def fn(t):
@@ -190,5 +189,5 @@ class Timeline(QtWidgets.QWidget):
             if mode == "absolute":
                 k.t = shown % (2 * math.pi)
             elif mode == "relative":
-                k.t = shown - (prev if prev is not None else display_times(ks)[i - 1])
+                k.t = shown - (prev if prev is not None else self._shown(ks)[i - 1])
         self.doc.edit("Change timing mode", fn)

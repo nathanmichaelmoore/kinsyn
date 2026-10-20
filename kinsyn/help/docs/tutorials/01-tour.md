@@ -10,10 +10,11 @@
      trace over.
 3. **Canvas** (centre): the mechanism and your target motion. Scroll to
    zoom, drag empty space to pan, and press **F** to fit everything in view.
-4. **Mechanism / Target** (right panel):
+4. **Mechanism / Target / Synthesis** (right panel):
    - **Mechanism** shows the current linkage's dimensions (with sliders)
      and its analysis summary.
    - **Target** is where you describe the motion you want.
+   - **Synthesis** finds linkages that produce it.
 5. **Timeline**: one turn of the input, with a marker for each keyframe.
    The orange line is where the animation is now.
 6. **Playback and plots**: play / pause (**Space**), speed, a scrub bar,

@@ -105,6 +105,12 @@ class Mechanism:
         return None
 
     # --- shared ----------------------------------------------------------
+    def coupler_angle(self, frames):
+        """Orientation of the coupler (the link carrying P) in each frame:
+        the direction of its first two drawing points."""
+        k0, k1 = self.drawing().coupler[:2]
+        return np.angle(frames.points[k1] - frames.points[k0])
+
     def copy(self, **changes):
         return replace(self, **changes)
 

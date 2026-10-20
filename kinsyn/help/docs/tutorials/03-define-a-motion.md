@@ -1,12 +1,9 @@
 # Define a motion: poses, body, curves and snapping
 
-The **Target** is the motion you *want*. Later, kinsyn's solvers will
-generate linkages that produce it.
-
-> **Note:** automatic generation of mechanisms from the target is the next
-> milestone. Today you can set the target up completely (and save it), but
-> the mechanism on the canvas does not respond to it yet. You can hide the
-> mechanism with **View → Show mechanism**.
+The **Target** is the motion you *want*. The **Synthesis** tab then finds
+linkages that produce it: see
+[Find a linkage for 2 or 3 poses](04-motion-generation.md). While you set
+up the target, you can hide the mechanism with **View → Show mechanism**.
 
 Start with **File → New project** for a clean canvas.
 
@@ -106,7 +103,8 @@ Every keyframe is also in the table in the **Target** tab. You can:
 - **Zone** (**Z**): outline a region where ground pivots are *allowed*.
   Hold **Ctrl** on the last click to make a *keep-out* zone instead.
 - **Pivot** (**G**): click to fix a ground pivot at an exact spot. Drag to
-  fix a slider's line of travel instead.
+  fix a slider's line of travel instead. Every design the search finds
+  then uses your fixed pivots.
 
 ## Tracing over a drawing or photo
 

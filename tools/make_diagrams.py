@@ -383,8 +383,43 @@ def timeline():
     svg.save("timeline.svg")
 
 
+def dyads():
+    """Motion generation: a ground pivot picked for three poses fixes the
+    moving pivot, whose three positions lie on a circle around it."""
+    from kinsyn.synthesis.dyad import Poses, rr_from_ground
+
+    body = Body([[-14 - 7j, 26 - 7j, 26 + 8j, -14 + 8j]])
+    ks = [Keyframe(0j, 0.0), Keyframe(50 + 28j, math.radians(30)), Keyframe(100 + 30j, math.radians(70))]
+    poses = Poses.of(ks)
+    svg = Svg(660, 350, (-55, 165), (-70, 72))
+    for k in ks:
+        for pl in body.at(k.pos, k.angle):
+            svg.poly(list(pl), GHOST, 0.10, 1.8)
+    for i, (G, col, name) in enumerate(((20 - 30j, COUPLER, "A"), (95 - 35j, CURVE, "B"))):
+        d = rr_from_ground(poses, G)
+        M = poses.world(d.m)
+        r = abs(M[0] - G)
+        # The arc of the circle (centre G) that the moving pivot travels along.
+        ang = np.unwrap(np.angle(M - G))
+        lo, hi = min(ang) - 0.25, max(ang) + 0.25
+        svg.line(G + r * np.exp(1j * np.linspace(lo, hi, 60)), col, 1.5, dash="5 5")
+        for j, z in enumerate(M):
+            svg.line([G, z], col, 3 if j == 0 else 1.5, opacity=1.0 if j == 0 else 0.55)
+            svg.line([z, ks[j].pos], col, 1.5, dash="2 4")
+            svg.dot(z, col, 5)
+        svg.ground(G)
+        svg.text(G, f"{name}0", col, dx=24 if i else -24, dy=6, weight="bold")
+        svg.text(M[0], name, col, dx=-12, dy=-8, weight="bold")
+    for i, k in enumerate(ks):
+        svg.dot(k.pos, GHOST, 5)
+        svg.text(k.pos, str(i + 1), GHOST, dx=4, dy=-12, weight="bold")
+    svg.label(20, 314, "Pick a ground pivot (A0): the body point that stays at one distance from it in every pose", MUTED, 13)
+    svg.label(20, 334, "is the moving pivot (A). Two such dyads, A0-A and B0-B, make a four-bar.", MUTED, 13)
+    svg.save("dyads.svg")
+
+
 if __name__ == "__main__":
     for fn in (anatomy, transmission, grashof, toggle, slider, assemblies, poses_body, snapping, motion_plots,
-               mech_advantage, timeline):
+               mech_advantage, timeline, dyads):
         fn()
     print("wrote", sorted(p.name for p in OUT.glob("*.svg")))

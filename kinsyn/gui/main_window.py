@@ -32,12 +32,13 @@ from .editor import ParamEditor, ValueField
 from .library_panel import LibraryPanel
 from .plots import CircuitPlots
 from .settings import DEFAULTS, PreferencesDialog, Settings, apply_app_font, clamp_font
+from .synthesis_panel import SynthesisPanel
 from .view import MechanismView
 
 SPEEDS = [("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)]
 N_SAMPLES = 720
 CYCLE_SECONDS = 4.0  # one circuit at 1x speed
-LAYOUT_VERSION = 3  # bump when docks are added/removed so stale layouts are ignored
+LAYOUT_VERSION = 4  # bump when docks are added/removed so stale layouts are ignored
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -58,6 +59,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.speed_lin = 50.0  # linear input speed, mm/s
         self.source = None  # library entry the current design started from
         self.baseline = (self.mech, None)  # what Reset restores
+        self.body_angle = None  # target body angle relative to the coupler (designs from synthesis)
+        self._coupler_angle = None
         self.mu_limit = math.radians(self.prefs["analysis/mu_limit_deg"])
 
         self.view = MechanismView()
@@ -115,6 +118,15 @@ class MainWindow(QtWidgets.QMainWindow):
         tscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.target_dock = self._dock("Target", tscroll, QtCore.Qt.RightDockWidgetArea)
         self.tabifyDockWidget(mech_dock, self.target_dock)
+        self.synth = SynthesisPanel(self.doc, self.mu_limit)
+        self.synth.designSelected.connect(self.load_design)
+        self.synth.linkActivated.connect(self.open_help_link)
+        sscroll = QtWidgets.QScrollArea()
+        sscroll.setWidget(self.synth)
+        sscroll.setWidgetResizable(True)
+        sscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.synth_dock = self._dock("Synthesis", sscroll, QtCore.Qt.RightDockWidgetArea)
+        self.tabifyDockWidget(self.target_dock, self.synth_dock)
         mech_dock.raise_()
         self.project_path = None
         self._extra_dirty = False  # project changes outside the undo stack (underlays, mechanism)
@@ -157,6 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.set_units(self.unit)
         self.view.set_units(self.unit)
         self.target_panel.set_units(self.unit)
+        self.synth.set_units(self.unit)
         self.layers_panel.set_units(self.unit)
         self._apply_fonts()
         geo, state = self.settings.get_raw("window/geometry"), self.settings.get_raw("window/state")
@@ -332,6 +345,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         from kinsyn.core.target import Target
         self.doc.reset(Target())
+        self.set_body_angle(None)
         self.underlays.clear()
         self.project_path = None
         self._extra_dirty = False
@@ -356,6 +370,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mech, self.operating = proj.mechanism, proj.operating_range
             self.baseline = (self.mech, self.operating)
             self.editor.set_mechanism(self.mech)
+        self.synth.forget_current()
+        self.set_body_angle(proj.body_angle if proj.mechanism is not None else None)
         self.unit_combo.setCurrentText(proj.units)
         self.underlays.clear()
         missing = []
@@ -384,7 +400,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not path.endswith(".kinsyn"):
                 path += ".kinsyn"
         proj = Project(target=self.doc.target, mechanism=self.mech, operating_range=self.operating,
-                       units=self.unit, underlays=self.underlays.to_dicts())
+                       units=self.unit, underlays=self.underlays.to_dicts(), body_angle=self.body_angle)
         try:
             save_project(proj, path)
         except OSError as exc:
@@ -429,6 +445,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                   triggered=lambda: self.show_help("tutorials/02-explore-a-template.md")))
         h.addAction(QtGui.QAction("Tutorial: define a motion (poses, body, snapping)", self,
                                   triggered=lambda: self.show_help("tutorials/03-define-a-motion.md")))
+        h.addAction(QtGui.QAction("Tutorial: find a linkage for 2 or 3 poses", self,
+                                  triggered=lambda: self.show_help("tutorials/04-motion-generation.md")))
         h.addSeparator()
         h.addAction(QtGui.QAction("Concepts: anatomy of a four-bar", self,
                                   triggered=lambda: self.show_help("concepts/fourbar-anatomy.md")))
@@ -446,6 +464,7 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addSeparator()
         self.show_mech_action = QtGui.QAction("Show mechanism", self, checkable=True, checked=True,
                                               toggled=self.view.set_mechanism_visible)
+        self.show_mech_action.toggled.connect(lambda _: self.show_index(int(self.index)))
         self.show_mech_action.setToolTip("Hide the mechanism while you set up the target motion")
         v.addAction(self.show_mech_action)
         self.unlock_action = QtGui.QAction("Unlock panel layout", self, checkable=True,
@@ -521,6 +540,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def load_entry(self, entry):
         crashlog.breadcrumb(f"load library entry {entry.id}")
         self.source = entry
+        self.synth.forget_current()
+        self.set_body_angle(None)
         self.baseline = (entry.mechanism, entry.operating_range)
         self.mech = entry.mechanism
         self.operating = entry.operating_range
@@ -535,6 +556,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mech = REGISTRY[kind]()
             self.operating = None
             self.source = None
+            self.synth.forget_current()
+            self.set_body_angle(None)
             self.baseline = (self.mech, None)
             self.circuit_index = 0
             self.editor.set_mechanism(self.mech)
@@ -544,11 +567,36 @@ class MainWindow(QtWidgets.QMainWindow):
         driver_changed = getattr(mech, "driver", None) != getattr(self.mech, "driver", None)
         changed = {k: v for k, v in mech.to_dict().items() if self.mech.to_dict().get(k) != v}
         crashlog.breadcrumb(f"edit mechanism {changed}")
+        self.synth.forget_current()
+        self.timeline.set_solved(None)
         self.mech = mech
         if driver_changed:
             self.operating = None
             self.circuit_index = 0
         self.recompute(autorange=driver_changed)
+
+    def load_design(self, cand, picked):
+        """Show a design from the synthesis panel. `picked` is True when the
+        user chose it (vs. it being re-solved while the target is edited)."""
+        self.source = None
+        self.mech = cand.mech
+        # A rocking design runs between its first and last pose; a crank turns fully.
+        self.operating = None if cand.full_rotation else cand.operating
+        self.baseline = (self.mech, self.operating)
+        self.circuit_index = 0
+        self.body_angle = cand.body_angle
+        self.timeline.set_solved(cand.q if self.mech.input_kind == "angle" else None)
+        self.editor.set_mechanism(self.mech)
+        if picked:
+            self.show_mech_action.setChecked(True)
+        self.recompute(autorange=picked)
+        self.mark_dirty()
+
+    def set_body_angle(self, angle):
+        self.body_angle = angle
+        if angle is None:
+            self.layer.show_carried(None)
+            self.timeline.set_solved(None)
 
     def on_circuit(self, i):
         self.circuit_index = i
@@ -617,6 +665,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_motion_box(intervals, full)
         if circuit is None:
             self.view.clear_mechanism()
+            self.layer.show_carried(None)
             reason = ("The operating range is outside the range where the mechanism assembles."
                       if self.operating and intervals else "These dimensions cannot be assembled.")
             self.summary.setText(f"<p style='color:#ef5350'><b>{reason}</b></p>")
@@ -632,6 +681,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     others.append(trace_circuit(self.mech, iv, False, N_SAMPLES).frames)
         toggles = [i for i, _ in summary.toggles]
         self.view.set_circuit(self.mech, circuit, others, toggles, autorange)
+        self._coupler_angle = self.mech.coupler_angle(circuit.frames)
         ma = mechanical_advantage(self.mech, circuit)
         derivs = circuit_derivatives(self.mech, circuit, self._input_speed())
         self.plots.set_data(self.mech, circuit, derivs, ma, self.unit, self.mu_limit)
@@ -752,6 +802,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.circuit is None:
             return
         self.view.show_frame(i)
+        if self.body_angle is not None and self.show_mech_action.isChecked():
+            self.layer.show_carried(self.circuit.frames.points["P"][i], self._coupler_angle[i] + self.body_angle)
+        else:
+            self.layer.show_carried(None)
         self.plots.set_index(i)
         q = self.circuit.frames.q[i]
         self.timeline.set_playhead(q if self.mech.input_kind == "angle" else None)
@@ -849,6 +903,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.settings.set_raw("window/geometry", self.saveGeometry())
         self.settings.set_raw("window/state", self.saveState(LAYOUT_VERSION))
+        self.synth.shutdown()
         super().closeEvent(event)
 
     # --- units / library -------------------------------------------------
@@ -858,6 +913,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.set_units(unit)
         self.view.set_units(unit)
         self.target_panel.set_units(unit)
+        self.synth.set_units(unit)
         self.layers_panel.set_units(unit)
         self.underlays.rebuild_all()
         self.layer.redraw()

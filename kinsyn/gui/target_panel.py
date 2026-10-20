@@ -34,13 +34,10 @@ class TargetPanel(QtWidgets.QWidget):
         self.mode.setToolTip(tooltip("synthesis"))
         top.addRow("Synthesis", self.mode)
         lay.addLayout(top)
-        # Until the solvers exist, say plainly what the target is for, so
-        # nobody waits for a mechanism to appear.
         self.notice = QtWidgets.QLabel(
             "<b>What this panel does:</b> describe the motion you <i>want</i> (poses, body, timing). "
-            "Generating mechanisms from it is the next milestone: once it lands, a <b>Solve</b> button "
-            "here will list candidate linkages. The mechanism on the canvas is unrelated to your "
-            "poses for now. <a href='help:tutorials/03-define-a-motion.md'>How to use the target editor</a>")
+            "The <b>Synthesis</b> tab then finds linkages that produce it (2 or 3 poses for now). "
+            "<a href='help:tutorials/03-define-a-motion.md'>How to use the target editor</a>")
         self.notice.setWordWrap(True)
         self.notice.setOpenExternalLinks(False)
         self.notice.setTextFormat(QtCore.Qt.RichText)

@@ -11,6 +11,7 @@ TOC = [
         ("Tour of the window", "tutorials/01-tour.md"),
         ("Explore a template", "tutorials/02-explore-a-template.md"),
         ("Define a motion: poses, body, snapping", "tutorials/03-define-a-motion.md"),
+        ("Find a linkage for 2 or 3 poses", "tutorials/04-motion-generation.md"),
     ]),
     ("Concepts", [
         ("Anatomy of a four-bar", "concepts/fourbar-anatomy.md"),
@@ -81,6 +82,16 @@ TERMS = {
                         "can handle up to 5 poses.", "concepts/synthesis.md"),
     "timing": ("Timing", "Whether a keyframe must be reached at a particular input angle (prescribed) or "
                "whenever the mechanism gets there (free).", "concepts/synthesis.md"),
+    "dyad": ("Dyad", "Two links' worth of a mechanism: one ground pivot, one link, and one joint on the moving "
+             "part. Two dyads together make a four-bar or slider-crank.", "concepts/synthesis.md"),
+    "branch-defect": ("Branch defect", "The design reaches some poses in one assembly and others in the other "
+                      "assembly. The real linkage can't switch without being taken apart.", "concepts/synthesis.md"),
+    "order-defect": ("Order defect", "The design passes through all the poses, but not in the order you set.",
+                     "concepts/synthesis.md"),
+    "circuit-defect": ("Circuit defect", "The poses lie on separate pieces of the motion, so the input can't "
+                       "move from one to the next without the linkage coming apart.", "concepts/synthesis.md"),
+    "fixed-pivot": ("Fixed pivot", "A ground pivot you place yourself (Pivot tool, G). Every design the search "
+                    "finds then uses it.", "tutorials/04-motion-generation.md"),
     "snapping": ("Snapping", "Placement that locks to the grid, existing points, alignment lines or 15° "
                  "angles. S toggles it; hold Alt to place freely.", "tutorials/03-define-a-motion.md"),
 }

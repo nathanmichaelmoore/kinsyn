@@ -17,6 +17,9 @@ class Project:
     operating_range: tuple | None = None
     units: str = "mm"
     underlays: list = field(default_factory=list)  # dicts, see gui.underlays
+    # Angle of the target body relative to the coupler, for a mechanism made
+    # by synthesis (the body is then drawn riding on the coupler).
+    body_angle: float | None = None
 
     def to_dict(self):
         return {
@@ -25,6 +28,7 @@ class Project:
             "mechanism": self.mechanism.to_dict() if self.mechanism else None,
             "operating_range": list(self.operating_range) if self.operating_range else None,
             "underlays": self.underlays,
+            "body_angle": self.body_angle,
         }
 
     @staticmethod
@@ -39,7 +43,7 @@ class Project:
         return Project(target=Target.from_dict(d.get("target", {})),
                        mechanism=Mechanism.from_dict(d["mechanism"]) if d.get("mechanism") else None,
                        operating_range=tuple(op) if op else None, units=d.get("units", "mm"),
-                       underlays=d.get("underlays", []))
+                       underlays=d.get("underlays", []), body_angle=d.get("body_angle"))
 
 
 def save_project(project: Project, path):

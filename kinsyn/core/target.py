@@ -256,6 +256,22 @@ class Target:
                       pivots=[FixedPivot.from_dict(p) for p in d.get("pivots", [])])
 
 
+def resolved_times(keyframes):
+    """Input angle (rad) for every keyframe, or None for free ones."""
+    out, prev = [], None
+    for k in keyframes:
+        if k.timing == "absolute":
+            prev = k.t
+        elif k.timing == "relative" and prev is not None:
+            prev = prev + k.t
+        else:
+            prev = None if k.timing == "free" else prev
+            out.append(None)
+            continue
+        out.append(prev)
+    return out
+
+
 def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 

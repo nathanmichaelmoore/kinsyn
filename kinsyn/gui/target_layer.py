@@ -18,6 +18,7 @@ ZONE_OK = "#66bb6a"
 ZONE_NO = "#ef5350"
 PIVOT_T = "#ffb74d"
 MEASURE = "#fff176"
+CARRIED = "#ce93d8"
 
 ARROW_PX = 46  # pose arrow / rotation handle distance, screen pixels
 
@@ -41,6 +42,10 @@ class TargetLayer(QtCore.QObject):
                    self.measure_text):
             it.setZValue(60)
             view.addItem(it)
+        # The body carried by a synthesized mechanism's coupler.
+        self.carried = pg.PlotDataItem(pen=pg.mkPen(CARRIED, width=2), connect="finite")
+        self.carried.setZValue(47)
+        view.addItem(self.carried)
         doc.changed.connect(self.redraw)
         doc.selectionChanged.connect(self.redraw)
         view.getViewBox().sigRangeChanged.connect(lambda *_: self.redraw())
@@ -208,6 +213,25 @@ class TargetLayer(QtCore.QObject):
         self.measure_line.setData(*self._xy([a, b]))
         self.measure_text.setText(text)
         self.measure_text.setPos(*[v[0] for v in self._xy([(a + b) / 2])])
+
+    def show_carried(self, pos=None, angle=0.0):
+        """Draw the target body (or a pose arrow if there is none) at a
+        pose; pos=None hides it."""
+        if pos is None:
+            self.carried.setData([], [])
+            return
+        body = self.doc.target.body
+        if body is not None:
+            parts = [np.append(pl, pl[:1]) if body.closed else np.asarray(pl, complex)
+                     for pl in body.at(pos, angle)]
+        else:
+            R = self.handle_radius()
+            u = complex(math.cos(angle), math.sin(angle))
+            tip = pos + R * u
+            head = [tip - 0.28 * R * u * complex(math.cos(a), math.sin(a)) for a in (0.45, -0.45)]
+            parts = [np.array([pos, tip]), np.array([head[0], tip, head[1]])]
+        z = np.concatenate([np.append(p, complex(np.nan, np.nan)) for p in parts])
+        self.carried.setData(*self._xy(z))
 
     def clear_feedback(self):
         self.show_snap(None)

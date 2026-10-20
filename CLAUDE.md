@@ -7,8 +7,9 @@ Design and roadmap: `PLAN.md`. Run: `.venv/bin/python -m kinsyn`. Tests:
 logs are untouched.
 
 - `kinsyn/core/` is GUI-free (mm and radians internally, complex numbers for
-  points); `kinsyn/gui/` is the Qt layer; `kinsyn/library/builtin/` holds the
-  JSON templates (each has an `expected_class` checked by the tests).
+  points); `kinsyn/synthesis/` (also GUI-free) holds the solvers;
+  `kinsyn/gui/` is the Qt layer; `kinsyn/library/builtin/` holds the JSON
+  templates (each has an `expected_class` checked by the tests).
 
 ## Docs
 
@@ -40,3 +41,10 @@ if something was missing for the diagnosis.
 Known issue: dragging dock panels on Wayland crashed in Qt's drag loop
 (double free, 2026-09-29). Panels are therefore locked by default
 (View > Unlock panel layout).
+
+Known issue: overriding `QTableWidgetItem.__lt__` (for numeric sorting)
+segfaults inside Qt's sort with PySide6 6.11 on Python 3.14 (2026-10-19).
+Sort rows in Python instead (see `gui/synthesis_panel.py`).
+
+Headless scripts that build `MainWindow` directly skip `app.py`, so
+kinsyn's crash logs aren't written; run with `python -X faulthandler`.
